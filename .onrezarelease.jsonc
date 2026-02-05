@@ -7,25 +7,25 @@
     "showAuthor": true,
     "showHash": true,
     "types": {
+      "build": "🏗️ Build System",
+      "chore": "🔧 Chores",
+      "ci": "👷 CI/CD",
+      "docs": "📝 Documentation",
       "feat": "✨ Features",
       "fix": "🐛 Bug Fixes",
-      "docs": "📝 Documentation",
-      "style": "💄 Styles",
-      "refactor": "♻️ Refactoring",
       "perf": "⚡ Performance",
-      "test": "✅ Tests",
-      "build": "🏗️ Build System",
-      "ci": "👷 CI/CD",
-      "chore": "🔧 Chores",
-      "revert": "⏪ Reverts"
+      "refactor": "♻️ Refactoring",
+      "revert": "⏪ Reverts",
+      "style": "💄 Styles",
+      "test": "✅ Tests"
     }
   },
 
   // Настройки генерации commitlint конфига
   "commitlint": {
-    "scopes": ["deps","ci","docs"],
+    "headerMaxLength": 100,
     "scopeRequired": false,
-    "headerMaxLength": 100
+    "scopes": ["deps", "ci", "docs"]
   },
 
   // Настройки Git операций
@@ -37,23 +37,23 @@
     // beforeCommit: "bun run format" // Раскомментируйте для форматирования перед коммитом
   },
 
-  // Настройки создания Release (GitVerse, GitHub, GitLab)
-  // Токен: GVR_TOKEN (GitVerse), GITHUB_TOKEN (GitHub), GITLAB_TOKEN (GitLab)
-  "release": {
-    "enabled": true,
-    "platform": "auto",  // auto | gitverse | github | gitlab
-    "checkExisting": true,
-    "failOnError": true
-  },
-
   // Настройки монорепо
   "monorepo": {
     "enabled": false
   },
 
+  // Настройки создания Release (GitVerse, GitHub, GitLab)
+  // Токен: GVR_TOKEN (GitVerse), GITHUB_TOKEN (GitHub), GITLAB_TOKEN (GitLab)
+  "release": {
+    "checkExisting": true,
+    "enabled": true,
+    "failOnError": true,
+    "platform": "auto" // auto | gitverse | github | gitlab
+  },
+
   // Настройки версионирования
   "versioning": {
-    "tagPrefix": "v",
-    "prereleasePrefix": "beta"
+    "prereleasePrefix": "beta",
+    "tagPrefix": "v"
   }
 }

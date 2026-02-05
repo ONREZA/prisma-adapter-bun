@@ -1,0 +1,43 @@
+commit-msg:
+  commands:
+    commitlint:
+      run: bunx commitlint --edit {1}
+      fail_text: |
+        Commit message does not follow Conventional Commits format.
+
+        Format: <type>(<scope>): <subject>
+
+        Examples:
+          - feat: add batch transaction support
+          - fix: handle null column types correctly
+          - docs: update README
+          - chore(deps): upgrade prisma to v7.4
+
+        See commitlint.config.ts for allowed types and scopes.
+
+pre-commit:
+  parallel: false
+  commands:
+    lint:
+      run: bunx biome check --write
+      fail_text: "Linting failed. Run 'bunx biome check' to see errors."
+      stage_fixed: true
+    typecheck:
+      run: bun run typecheck
+      fail_text: "Type checking failed. Run 'bun run typecheck' to see errors."
+
+pre-push:
+  parallel: true
+  commands:
+    lint:
+      run: bunx biome check
+      fail_text: "Linting failed. Run 'bunx biome check' to see errors."
+    typecheck:
+      run: bun run typecheck
+      fail_text: "Type checking failed. Run 'bun run typecheck' to see errors."
+    test:
+      run: bun test
+      fail_text: "Tests failed. Run 'bun test' to see failing tests."
+      skip:
+        - merge
+        - rebase

@@ -1,0 +1,168 @@
+{
+  "$schema": "node_modules/@biomejs/biome/configuration_schema.json",
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on",
+        "useSortedAttributes": "on",
+        "useSortedKeys": "on",
+        "useSortedProperties": "on"
+      }
+    },
+    "enabled": true
+  },
+  "files": {
+    "ignoreUnknown": false
+  },
+  "formatter": {
+    "attributePosition": "auto",
+    "bracketSameLine": false,
+    "bracketSpacing": true,
+    "enabled": true,
+    "expand": "auto",
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 120,
+    "useEditorconfig": true
+  },
+  "javascript": {
+    "globals": ["Bun"],
+    "jsxRuntime": "transparent"
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "complexity": {
+        "noExcessiveCognitiveComplexity": {
+          "level": "warn",
+          "options": {
+            "maxAllowedComplexity": 15
+          }
+        },
+        "noForEach": {
+          "level": "error",
+          "options": {
+            "allowedIdentifiers": ["_"]
+          }
+        },
+        "useSimplifiedLogicExpression": "error",
+        "useWhile": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noImportCycles": "error",
+        "noUselessUndefined": "warn",
+        "useExhaustiveSwitchCases": "error"
+      },
+      "performance": {
+        "noBarrelFile": "error",
+        "noDelete": "error",
+        "useTopLevelRegex": "error"
+      },
+      "recommended": true,
+      "style": {
+        "noCommonJs": "error",
+        "noDefaultExport": "error",
+        "noEnum": "error",
+        "noInferrableTypes": "error",
+        "noNegationElse": "error",
+        "noNestedTernary": "error",
+        "noParameterAssign": "error",
+        "noSubstr": "error",
+        "noUnusedTemplateLiteral": "error",
+        "noUselessElse": "error",
+        "noYodaExpression": "error",
+        "useAsConstAssertion": "error",
+        "useAtIndex": "error",
+        "useConsistentArrayType": {
+          "level": "warn",
+          "options": {
+            "syntax": "shorthand"
+          }
+        },
+        "useConsistentBuiltinInstantiation": "error",
+        "useConst": "error",
+        "useExplicitLengthCheck": "error",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {}
+        },
+        "useForOf": "error",
+        "useNumberNamespace": "error"
+      },
+      "suspicious": {
+        "noVar": "error",
+        "useAwait": "error",
+        "useNumberToFixedDigitsArgument": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["**/tests/**/*.test.ts", "**/*.spec.ts", "**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off",
+            "noForEach": "off"
+          },
+          "correctness": {
+            "noUnusedVariables": "warn"
+          },
+          "style": {
+            "noDefaultExport": "off",
+            "noNonNullAssertion": "off",
+            "noParameterAssign": "off"
+          },
+          "suspicious": {
+            "noExplicitAny": "off",
+            "noImplicitAnyLet": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/src/**/index.ts", "index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.config.*"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
+    },
+    {
+      "assist": {
+        "actions": {
+          "source": {
+            "useSortedKeys": "off"
+          }
+        }
+      },
+      "includes": ["**/package.json", "bun.lock"],
+      "json": {
+        "formatter": {
+          "expand": "auto"
+        }
+      }
+    }
+  ],
+  "vcs": {
+    "clientKind": "git",
+    "defaultBranch": "main",
+    "enabled": true,
+    "useIgnoreFile": true
+  }
+}
