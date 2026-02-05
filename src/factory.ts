@@ -2,6 +2,7 @@ import type { SqlDriverAdapter, SqlMigrationAwareDriverAdapterFactory } from "@p
 import { SQL } from "bun";
 import { PrismaBunAdapter } from "./adapter.ts";
 import type { BunSqlConfig, PrismaBunOptions } from "./types.ts";
+import { validateConnectionUrl } from "./validation.ts";
 
 const ADAPTER_NAME = "@onreza/prisma-adapter-bun";
 
@@ -30,12 +31,20 @@ export class PrismaBunFactory implements SqlMigrationAwareDriverAdapterFactory {
   constructor(config: BunSqlConfig, options?: PrismaBunOptions);
   constructor(client: SQL, options?: PrismaBunOptions);
   constructor(configOrClient: BunSqlConfig | SQL, options?: PrismaBunOptions) {
-    this.bunOptions = options;
     if (isSqlClient(configOrClient)) {
       this.externalClient = configOrClient;
       this.config = {};
+      this.bunOptions = options;
+    } else if (typeof configOrClient === "string" || configOrClient instanceof URL) {
+      const validated = validateConnectionUrl(configOrClient);
+      this.config = validated.url;
+      this.bunOptions = {
+        ...options,
+        schema: options?.schema ?? validated.schema,
+      };
     } else {
       this.config = configOrClient;
+      this.bunOptions = options;
     }
   }
 

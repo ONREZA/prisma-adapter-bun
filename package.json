@@ -21,9 +21,7 @@
   "engines": {
     "bun": ">=1.2.0"
   },
-  "dependencies": {
-    "@prisma/driver-adapter-utils": "^7.3.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@biomejs/biome": "^2.3.14",
     "@commitlint/types": "^20.4.0",
@@ -34,6 +32,7 @@
     "prisma": "^7.3.0"
   },
   "peerDependencies": {
+    "@prisma/driver-adapter-utils": "^7.0.0",
     "typescript": "^5"
   },
   "scripts": {
@@ -42,7 +41,7 @@
     "format": "biome format --write",
     "typecheck": "tsc --noEmit",
     "check": "biome check && tsc --noEmit",
-    "test": "bun test tests/conversion.test.ts tests/errors.test.ts",
+    "test": "bun test tests/conversion.test.ts tests/errors.test.ts tests/validation.test.ts",
     "test:integration": "bun test tests/adapter.test.ts",
     "test:e2e": "bun test --timeout 120000 tests/factory.test.ts tests/prisma.test.ts",
     "test:all": "bun test --timeout 120000",
