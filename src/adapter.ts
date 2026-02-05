@@ -36,10 +36,13 @@ class BunQueryable implements SqlQueryable {
   readonly provider = "postgres" as const;
   readonly adapterName = ADAPTER_NAME;
 
-  constructor(
-    protected readonly client: BunSQL | ReservedSQL,
-    protected readonly bunOptions?: PrismaBunOptions,
-  ) {}
+  protected readonly client: BunSQL | ReservedSQL;
+  protected readonly bunOptions?: PrismaBunOptions;
+
+  constructor(client: BunSQL | ReservedSQL, bunOptions?: PrismaBunOptions) {
+    this.client = client;
+    this.bunOptions = bunOptions;
+  }
 
   protected async performIO(query: SqlQuery): Promise<QueryResult> {
     const { sql, args, argTypes } = query;
@@ -141,11 +144,11 @@ export class BunTransaction extends BunQueryable implements Transaction {
   readonly txOptions: TransactionOptions = { usePhantomQuery: false };
   private released = false;
 
-  constructor(
-    protected override readonly client: ReservedSQL,
-    bunOptions?: PrismaBunOptions,
-  ) {
+  protected override readonly client: ReservedSQL;
+
+  constructor(client: ReservedSQL, bunOptions?: PrismaBunOptions) {
     super(client, bunOptions);
+    this.client = client;
   }
 
   get options(): TransactionOptions {
@@ -177,12 +180,11 @@ export class BunTransaction extends BunQueryable implements Transaction {
 export class PrismaBunAdapter extends BunQueryable implements SqlDriverAdapter {
   private readonly disposeCallback?: () => Promise<void>;
 
-  constructor(
-    protected override readonly client: BunSQL,
-    bunOptions?: PrismaBunOptions,
-    disposeCallback?: () => Promise<void>,
-  ) {
+  protected override readonly client: BunSQL;
+
+  constructor(client: BunSQL, bunOptions?: PrismaBunOptions, disposeCallback?: () => Promise<void>) {
     super(client, bunOptions);
+    this.client = client;
     this.disposeCallback = disposeCallback;
   }
 

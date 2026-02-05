@@ -8,11 +8,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": [
-    "src",
-    "LICENSE",
-    "README.md"
-  ],
+  "files": ["src", "LICENSE", "README.md"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ONREZA/prisma-adapter-bun.git"
@@ -21,16 +17,7 @@
     "url": "https://github.com/ONREZA/prisma-adapter-bun/issues"
   },
   "homepage": "https://github.com/ONREZA/prisma-adapter-bun#readme",
-  "keywords": [
-    "prisma",
-    "bun",
-    "bun-sql",
-    "postgresql",
-    "postgres",
-    "driver-adapter",
-    "database",
-    "orm"
-  ],
+  "keywords": ["prisma", "bun", "bun-sql", "postgresql", "postgres", "driver-adapter", "database", "orm"],
   "engines": {
     "bun": ">=1.2.0"
   },
