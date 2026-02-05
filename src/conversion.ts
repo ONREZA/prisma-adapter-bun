@@ -303,6 +303,22 @@ function inferArrayOid(arr: unknown[]): number {
 }
 
 /**
+ * Detect whether a string value is a JSON object or array.
+ * Used to distinguish JSON columns (returned as strings by Bun.sql
+ * in relation joins) from plain TEXT columns.
+ */
+function isJsonString(value: string): boolean {
+  const ch = value.charAt(0);
+  if (ch !== "{" && ch !== "[") return false;
+  try {
+    const parsed = JSON.parse(value);
+    return typeof parsed === "object" && parsed !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Infer a PostgreSQL OID from a JavaScript value.
  * Used as a fallback when Bun.sql doesn't expose column metadata.
  * The inferred OID is then mapped to ColumnType via fieldToColumnType().
@@ -318,6 +334,7 @@ export function inferOidFromValue(value: unknown): number {
   if (value instanceof Uint8Array || value instanceof Buffer) return PgOid.BYTEA;
   if (Array.isArray(value)) return inferArrayOid(value);
   if (typeof value === "object") return PgOid.JSONB;
+  if (typeof value === "string" && isJsonString(value)) return PgOid.JSON;
   return PgOid.TEXT;
 }
 

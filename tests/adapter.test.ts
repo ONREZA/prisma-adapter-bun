@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { ColumnTypeEnum } from "@prisma/driver-adapter-utils";
 import { SQL } from "bun";
 import { PrismaBunAdapter } from "../src/adapter.ts";
 
@@ -227,6 +228,76 @@ describe.skipIf(!canConnect)("PrismaBunAdapter integration", () => {
     });
 
     expect(result.rows[0]).toEqual(["hello", 42, true]);
+  });
+
+  test("queryRaw: JSON string from relation join is typed as Json", async () => {
+    // Simulate what Prisma does with relationJoins: LEFT JOIN + to_jsonb()
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _adapter_child;
+      DROP TABLE IF EXISTS _adapter_parent;
+      CREATE TABLE _adapter_parent (id SERIAL PRIMARY KEY, name TEXT NOT NULL);
+      CREATE TABLE _adapter_child (id SERIAL PRIMARY KEY, parent_id INT REFERENCES _adapter_parent(id), role TEXT NOT NULL);
+      INSERT INTO _adapter_parent (name) VALUES ('Parent1');
+      INSERT INTO _adapter_child (parent_id, role) VALUES (1, 'OWNER');
+    `)
+      .simple();
+
+    // to_jsonb() returns JSON as a string — this is the relation join scenario
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: `
+        SELECT p.id, p.name, to_jsonb(c.*) AS child_data
+        FROM _adapter_parent p
+        LEFT JOIN _adapter_child c ON c.parent_id = p.id
+        WHERE p.name = 'Parent1'
+      `,
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+
+    // child_data: Bun.sql returns to_jsonb() as a string
+    const childData = row[2];
+    expect(typeof childData).toBe("string");
+    const parsed = JSON.parse(childData as string);
+    expect(parsed.role).toBe("OWNER");
+
+    // Column type must be Json, not Text (this was the bug)
+    expect(result.columnTypes[2]).toBe(ColumnTypeEnum.Json);
+
+    await client.unsafe("DROP TABLE IF EXISTS _adapter_child; DROP TABLE IF EXISTS _adapter_parent").simple();
+  });
+
+  test("queryRaw: json_build_object result is typed as Json", async () => {
+    // json_build_object returns JSON as a string in Bun.sql
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT json_build_object('role', 'OWNER', 'active', true) AS data",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const data = result.rows[0]![0];
+    expect(typeof data).toBe("string");
+    const parsed = JSON.parse(data as string);
+    expect(parsed.role).toBe("OWNER");
+    expect(parsed.active).toBe(true);
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Json);
+  });
+
+  test("queryRaw: plain text starting with { is not misclassified as Json", async () => {
+    // PG array literals like {a,b} start with { but are NOT JSON
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT '{not json}'::text AS val",
+    });
+
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0]![0]).toBe("{not json}");
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Text);
   });
 
   test("error handling: table does not exist", async () => {

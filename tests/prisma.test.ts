@@ -309,6 +309,86 @@ describe("Prisma e2e: errors", () => {
   });
 });
 
+describe("Prisma e2e: relation joins", () => {
+  // The adapter reports supportsRelationJoins: true, so Prisma uses LEFT JOIN
+  // and encodes related records as JSON. Bun.sql returns JSON as strings,
+  // so the adapter must correctly detect JSON strings (not classify them as TEXT).
+
+  test("findUnique with include (one-to-many + one-to-one)", async () => {
+    const user = await prisma.user.findUnique({
+      include: { posts: true, profile: true },
+      where: { email: "bob@test.com" },
+    });
+
+    expect(user).not.toBeNull();
+    expect(user!.name).toBe("Bob");
+    expect(user!.posts.length).toBe(2);
+    expect(user!.posts.find((p) => p.title === "First Post")?.published).toBe(true);
+    expect(user!.profile?.bio).toBe("Software developer");
+  });
+
+  test("findFirst with nested include (Post -> User with Json field)", async () => {
+    const post = await prisma.post.findFirst({
+      include: { author: true },
+      where: { title: "First Post" },
+    });
+
+    expect(post).not.toBeNull();
+    expect(post!.title).toBe("First Post");
+    expect(post!.author).not.toBeNull();
+    expect(post!.author.name).toBe("Bob");
+    // Author has a role enum — verify it survives the JSON encoding in relation join
+    expect(post!.author.role).toBe("USER");
+  });
+
+  test("findMany with nested select on relations", async () => {
+    const users = await prisma.user.findMany({
+      select: {
+        email: true,
+        posts: { select: { published: true, title: true } },
+        profile: { select: { bio: true } },
+      },
+      where: { email: "bob@test.com" },
+    });
+
+    expect(users.length).toBe(1);
+    expect(users[0]!.posts.length).toBe(2);
+    expect(users[0]!.posts[0]).toHaveProperty("title");
+    expect(users[0]!.posts[0]).not.toHaveProperty("id");
+    expect(users[0]!.profile?.bio).toBe("Software developer");
+  });
+
+  test("findFirst with include on user with Json metadata", async () => {
+    // Alice has metadata: { level: 5, permissions: ["read", "write"] }
+    const post = await prisma.post.findFirst({
+      include: { author: { include: { profile: true } } },
+      where: { author: { email: "alice@test.com" } },
+    });
+
+    // If Alice has no posts, create one for this test
+    if (!post) {
+      await prisma.post.create({
+        data: {
+          authorId: (await prisma.user.findUnique({ where: { email: "alice@test.com" } }))!.id,
+          title: "Alice Post",
+        },
+      });
+      const p = await prisma.post.findFirst({
+        include: { author: { include: { profile: true } } },
+        where: { author: { email: "alice@test.com" } },
+      });
+      expect(p).not.toBeNull();
+      expect(p!.author.email).toBe("alice@test.com");
+      expect(p!.author.metadata).toEqual({ level: 5, permissions: ["read", "write"] });
+      return;
+    }
+
+    expect(post.author.email).toBe("alice@test.com");
+    // The Json metadata must be returned as a parsed object, not a string
+    expect(post.author.metadata).toEqual({ level: 5, permissions: ["read", "write"] });
+  });
+});
+
 describe("Prisma e2e: advanced queries", () => {
   test("groupBy", async () => {
     const groups = await prisma.user.groupBy({

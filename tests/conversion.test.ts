@@ -271,6 +271,26 @@ describe("inferOidFromValue", () => {
   test("string -> TEXT", () => {
     expect(inferOidFromValue("hello")).toBe(PgOid.TEXT);
     expect(inferOidFromValue("")).toBe(PgOid.TEXT);
+    expect(inferOidFromValue("123")).toBe(PgOid.TEXT);
+    expect(inferOidFromValue("true")).toBe(PgOid.TEXT);
+  });
+
+  test("JSON object string -> JSON", () => {
+    expect(inferOidFromValue('{"role":"admin"}')).toBe(PgOid.JSON);
+    expect(inferOidFromValue('{"nested":{"a":1}}')).toBe(PgOid.JSON);
+    expect(inferOidFromValue("{}")).toBe(PgOid.JSON);
+  });
+
+  test("JSON array string -> JSON", () => {
+    expect(inferOidFromValue("[1,2,3]")).toBe(PgOid.JSON);
+    expect(inferOidFromValue('[{"id":1},{"id":2}]')).toBe(PgOid.JSON);
+    expect(inferOidFromValue("[]")).toBe(PgOid.JSON);
+  });
+
+  test("invalid JSON starting with { or [ -> TEXT", () => {
+    expect(inferOidFromValue("{not json}")).toBe(PgOid.TEXT);
+    expect(inferOidFromValue("[not json")).toBe(PgOid.TEXT);
+    expect(inferOidFromValue("{a,b,c}")).toBe(PgOid.TEXT);
   });
 
   test("Date -> TIMESTAMPTZ", () => {
