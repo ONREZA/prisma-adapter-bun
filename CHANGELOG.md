@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2026-02-05
+
+### 🐛 Bug Fixes
+
+- **ci:** use skipHooks option to bypass lefthook during release ([a5ae981](https://github.com/ONREZA/prisma-adapter-bun/commit/a5ae9815b8f2f77d804f43ead2a4b06e2a375cb6)) by Ivan Bobchenkov
+- **ci:** add biome format as onreza-release beforeCommit hook ([4995cd8](https://github.com/ONREZA/prisma-adapter-bun/commit/4995cd8fcafcd6715851cddc561d799215b1e766)) by Ivan Bobchenkov
+- **ci:** merge release and publish into single workflow ([1a026e8](https://github.com/ONREZA/prisma-adapter-bun/commit/1a026e828d71a0a1f0f280d9876b2ab7de4028ba)) by Ivan Bobchenkov
+
+### 🔧 Chores
+
+- **deps:** update onreza-release to 2.4.1 ([44956d9](https://github.com/ONREZA/prisma-adapter-bun/commit/44956d99aaa738a12abd41f500a90fbad2f1a422)) by Ivan Bobchenkov
+
 ## [0.3.1] - 2026-02-05
 
 ### 🐛 Bug Fixes
