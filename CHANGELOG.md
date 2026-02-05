@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-02-05
+
+### 🐛 Bug Fixes
+
+- detect JSON strings in inferOidFromValue for relation joins ([4689143](https://github.com/ONREZA/prisma-adapter-bun/commit/4689143bad84939cf47734bb17a1ad066b50f347)) by Ivan Bobchenkov
+- **ci:** restore registry-url for npm OIDC trusted publishing ([50d833f](https://github.com/ONREZA/prisma-adapter-bun/commit/50d833f200c912f8b12e034a23ae516023ce2c15)) by Ivan Bobchenkov
+
 ## [0.4.0] - 2026-02-05
 
 ### ✨ Features
