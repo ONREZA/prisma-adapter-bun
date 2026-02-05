@@ -175,6 +175,15 @@ describe("resultNormalizers", () => {
     expect(normalizer({ nested: { a: 1 } })).toBe('{"nested":{"a":1}}');
   });
 
+  test("normalizes JSONB array value to single JSON string (json_agg scenario)", () => {
+    // json_agg() returns a single JSONB value containing a JSON array.
+    // Bun.sql auto-parses it into a JS array. The normalizer must stringify
+    // the entire array as one JSON string, not per-element.
+    const normalizer = resultNormalizers[PgOid.JSONB]!;
+    expect(normalizer([{ id: 1, role: "OWNER" }])).toBe('[{"id":1,"role":"OWNER"}]');
+    expect(normalizer([{ a: 1 }, { b: 2 }])).toBe('[{"a":1},{"b":2}]');
+  });
+
   test("normalizes NUMERIC to string", () => {
     const normalizer = resultNormalizers[PgOid.NUMERIC]!;
     expect(normalizer(123.456)).toBe("123.456");
@@ -317,6 +326,22 @@ describe("inferOidFromValue", () => {
 
   test("array of strings -> TEXT_ARRAY", () => {
     expect(inferOidFromValue(["a", "b"])).toBe(PgOid.TEXT_ARRAY);
+  });
+
+  test("array of objects -> JSONB (not JSONB_ARRAY)", () => {
+    // json_agg() returns type jsonb, not jsonb[]. Bun.sql auto-parses it
+    // into a JS array. Must be typed as JSONB so Prisma gets columnType Json.
+    expect(inferOidFromValue([{ id: 1 }, { id: 2 }])).toBe(PgOid.JSONB);
+    expect(inferOidFromValue([{ role: "OWNER" }])).toBe(PgOid.JSONB);
+  });
+
+  test("array of Dates -> TIMESTAMPTZ_ARRAY", () => {
+    expect(inferOidFromValue([new Date(), new Date()])).toBe(PgOid.TIMESTAMPTZ_ARRAY);
+  });
+
+  test("array of Buffers -> BYTEA_ARRAY", () => {
+    expect(inferOidFromValue([Buffer.from("a"), Buffer.from("b")])).toBe(PgOid.BYTEA_ARRAY);
+    expect(inferOidFromValue([new Uint8Array([1]), new Uint8Array([2])])).toBe(PgOid.BYTEA_ARRAY);
   });
 
   test("empty array -> TEXT_ARRAY", () => {

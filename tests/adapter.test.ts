@@ -287,6 +287,50 @@ describe.skipIf(!canConnect)("PrismaBunAdapter integration", () => {
     expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Json);
   });
 
+  test("queryRaw: jsonb_agg result (parsed JS array) is typed as Json", async () => {
+    // jsonb_agg returns type jsonb (OID 3802), not jsonb[] (OID 3807).
+    // Bun.sql auto-parses it into a JS array. The adapter must classify it
+    // as JSONB (Json), not JSONB_ARRAY (JsonArray), and stringify the whole array.
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _adapter_child2;
+      DROP TABLE IF EXISTS _adapter_parent2;
+      CREATE TABLE _adapter_parent2 (id SERIAL PRIMARY KEY, name TEXT NOT NULL);
+      CREATE TABLE _adapter_child2 (id SERIAL PRIMARY KEY, parent_id INT REFERENCES _adapter_parent2(id), role TEXT NOT NULL);
+      INSERT INTO _adapter_parent2 (name) VALUES ('Parent1');
+      INSERT INTO _adapter_child2 (parent_id, role) VALUES (1, 'OWNER'), (1, 'MEMBER');
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: `
+        SELECT p.id, p.name, jsonb_agg(to_jsonb(c.*)) AS children
+        FROM _adapter_parent2 p
+        LEFT JOIN _adapter_child2 c ON c.parent_id = p.id
+        WHERE p.name = 'Parent1'
+        GROUP BY p.id, p.name
+      `,
+    });
+
+    expect(result.rows.length).toBe(1);
+
+    // Column type must be Json (not JsonArray) — this is the relation join fix
+    expect(result.columnTypes[2]).toBe(ColumnTypeEnum.Json);
+
+    // Value must be a stringified JSON array (whole array, not per-element)
+    const children = result.rows[0]![2];
+    expect(typeof children).toBe("string");
+    const parsed = JSON.parse(children as string);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBe(2);
+    expect(parsed.find((c: { role: string }) => c.role === "OWNER")).toBeTruthy();
+    expect(parsed.find((c: { role: string }) => c.role === "MEMBER")).toBeTruthy();
+
+    await client.unsafe("DROP TABLE IF EXISTS _adapter_child2; DROP TABLE IF EXISTS _adapter_parent2").simple();
+  });
+
   test("queryRaw: plain text starting with { is not misclassified as Json", async () => {
     // PG array literals like {a,b} start with { but are NOT JSON
     const result = await adapter.queryRaw({

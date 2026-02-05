@@ -298,7 +298,12 @@ function inferArrayOid(arr: unknown[]): number {
   }
   if (typeof first === "boolean") return PgOid.BOOL_ARRAY;
   if (first instanceof Date) return PgOid.TIMESTAMPTZ_ARRAY;
-  if (typeof first === "object") return PgOid.JSONB_ARRAY;
+  if (first instanceof Uint8Array || first instanceof Buffer) return PgOid.BYTEA_ARRAY;
+  // Objects/arrays → treat as a single JSONB value (not JSONB[]).
+  // json_agg() returns type jsonb (OID 3802), but Bun.sql auto-parses it
+  // into a JS array. Prisma PostgreSQL doesn't support Json[] columns,
+  // and relation joins use json_agg which must be typed as Json, not JsonArray.
+  if (typeof first === "object") return PgOid.JSONB;
   return PgOid.TEXT_ARRAY;
 }
 
