@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2026-02-05
+
+### 🐛 Bug Fixes
+
+- infer json_agg/jsonb_agg results as JSONB, not JSONB_ARRAY ([90e05bd](https://github.com/ONREZA/prisma-adapter-bun/commit/90e05bdccde4cc1577a631cb95e6d8a4b246c0d2)) by Ivan Bobchenkov
+
+### 👷 CI/CD
+
+- fix release pipeline ([2de1d55](https://github.com/ONREZA/prisma-adapter-bun/commit/2de1d55f87179050bae6f703b97d16f0aae22bd9)) by Ivan Bobchenkov
+
 ## [0.4.1] - 2026-02-05
 
 ### 🐛 Bug Fixes
