@@ -137,6 +137,25 @@ describe("mapArg", () => {
     expect((result as Buffer).toString()).toBe("hello");
   });
 
+  test("parses JSON string arguments to objects (avoid double-stringify)", () => {
+    // Prisma sends JSON fields as pre-stringified strings. Bun.sql's unsafe()
+    // would double-stringify them. mapArg must parse them back to objects.
+    const result = mapArg('{"role":"admin"}', { arity: "scalar", scalarType: "json" });
+    expect(result).toEqual({ role: "admin" });
+  });
+
+  test("parses JSON array string arguments", () => {
+    const result = mapArg("[1,2,3]", { arity: "scalar", scalarType: "json" });
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  test("parses JSON scalar string arguments", () => {
+    expect(mapArg('"hello"', { arity: "scalar", scalarType: "json" })).toBe("hello");
+    expect(mapArg("42", { arity: "scalar", scalarType: "json" })).toBe(42);
+    expect(mapArg("true", { arity: "scalar", scalarType: "json" })).toBe(true);
+    expect(mapArg("null", { arity: "scalar", scalarType: "json" })).toBeNull();
+  });
+
   test("maps list arguments to PG array literal", () => {
     const result = mapArg([1, 2, 3], { arity: "list", scalarType: "int" });
     expect(result).toBe("{1,2,3}");

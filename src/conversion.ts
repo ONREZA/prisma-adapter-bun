@@ -376,6 +376,18 @@ export function toPgArrayLiteral(arr: unknown[]): string {
 
 // --- Argument mapping (input parameters) ---
 
+function formatDateArg(date: Date, dbType: string | undefined): string {
+  switch (dbType) {
+    case "TIME":
+    case "TIMETZ":
+      return formatTime(date);
+    case "DATE":
+      return formatDate(date);
+    default:
+      return formatDateTime(date);
+  }
+}
+
 export function mapArg(arg: unknown, argType: ArgType): unknown {
   if (arg === null || arg === undefined) return null;
 
@@ -386,15 +398,17 @@ export function mapArg(arg: unknown, argType: ArgType): unknown {
 
   const value = typeof arg === "string" && argType.scalarType === "datetime" ? new Date(arg) : arg;
 
-  if (value instanceof Date) {
-    switch (argType.dbType) {
-      case "TIME":
-      case "TIMETZ":
-        return formatTime(value);
-      case "DATE":
-        return formatDate(value);
-      default:
-        return formatDateTime(value);
+  if (value instanceof Date) return formatDateArg(value, argType.dbType);
+
+  // Prisma sends JSON as pre-stringified strings (e.g. '{"role":"admin"}').
+  // Bun.sql's unsafe() serializes parameters via JSON.stringify, which would
+  // double-stringify a JSON string. Parse it back to a JS object so Bun.sql
+  // can serialize it correctly as a single JSON value.
+  if (typeof value === "string" && argType.scalarType === "json") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
     }
   }
 

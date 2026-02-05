@@ -331,6 +331,33 @@ describe.skipIf(!canConnect)("PrismaBunAdapter integration", () => {
     await client.unsafe("DROP TABLE IF EXISTS _adapter_child2; DROP TABLE IF EXISTS _adapter_parent2").simple();
   });
 
+  test("executeRaw: JSON string argument is not double-stringified", async () => {
+    // Prisma sends JSON as pre-stringified strings. Bun.sql's unsafe() would
+    // double-stringify them without the mapArg JSON parse fix.
+    await adapter.executeRaw({
+      args: ['{"level":5}', "JsonUser", 99],
+      argTypes: [
+        { arity: "scalar", scalarType: "json" },
+        { arity: "scalar", scalarType: "string" },
+        { arity: "scalar", scalarType: "int" },
+      ],
+      sql: "INSERT INTO _adapter_test (metadata, name, age) VALUES ($1, $2, $3)",
+    });
+
+    // Read back via raw SQL to verify the stored value
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT metadata FROM _adapter_test WHERE name = 'JsonUser'",
+    });
+
+    const val = result.rows[0]![0];
+    // Must be a JS object (Bun.sql auto-parses JSONB), then normalizeJson stringifies it.
+    // The key test: the value must represent {"level":5}, not a double-escaped string.
+    expect(typeof val).toBe("string");
+    expect(JSON.parse(val as string)).toEqual({ level: 5 });
+  });
+
   test("queryRaw: plain text starting with { is not misclassified as Json", async () => {
     // PG array literals like {a,b} start with { but are NOT JSON
     const result = await adapter.queryRaw({
