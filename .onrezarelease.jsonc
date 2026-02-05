@@ -30,11 +30,11 @@
 
   // Настройки Git операций
   "git": {
+    "beforeCommit": "bunx biome format --write",
     "commitChanges": true,
     "commitMessage": "chore(release): v{{version}} [skip ci]",
     "push": true,
     "tagMessage": "v{{version}}"
-    // beforeCommit: "bun run format" // Раскомментируйте для форматирования перед коммитом
   },
 
   // Настройки монорепо
