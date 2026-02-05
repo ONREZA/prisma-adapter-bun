@@ -1,0 +1,92 @@
+name: Bug Report
+description: Report a bug in @onreza/prisma-adapter-bun
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the information below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal code or steps to reproduce the issue.
+      placeholder: |
+        ```ts
+        import { PrismaBun } from '@onreza/prisma-adapter-bun'
+        // ...
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened. Include error messages if any.
+    validations:
+      required: true
+
+  - type: input
+    id: adapter-version
+    attributes:
+      label: Adapter version
+      placeholder: "0.3.1"
+    validations:
+      required: true
+
+  - type: input
+    id: prisma-version
+    attributes:
+      label: Prisma version
+      placeholder: "7.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: bun-version
+    attributes:
+      label: Bun version
+      placeholder: "1.3.8"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows (WSL)
+    validations:
+      required: true
+
+  - type: input
+    id: pg-version
+    attributes:
+      label: PostgreSQL version
+      placeholder: "16"
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other context (Prisma schema, logs, Docker setup, etc.)
