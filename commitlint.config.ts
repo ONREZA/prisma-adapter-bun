@@ -26,7 +26,7 @@ const config: UserConfig = {
     "header-max-length": [1, "always", 100], // warning
     "header-trim": [2, "always"],
     "scope-empty": [0], // scope optional
-    "scope-enum": [2, "always", ["ci", "deps", "docs"]],
+    "scope-enum": [2, "always", ["ci", "deps", "docs", "release"]],
     "subject-case": [0], // disabled - any case allowed
     "subject-empty": [2, "never"],
     "subject-full-stop": [2, "never", "."],

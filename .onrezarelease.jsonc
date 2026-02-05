@@ -25,7 +25,7 @@
   "commitlint": {
     "headerMaxLength": 100,
     "scopeRequired": false,
-    "scopes": ["deps", "ci", "docs"]
+    "scopes": ["deps", "ci", "docs", "release"]
   },
 
   // Настройки Git операций
