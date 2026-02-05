@@ -1,6 +1,6 @@
 {
   "name": "@onreza/prisma-adapter-bun",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Prisma 7+ driver adapter for Bun.sql — use Bun's built-in PostgreSQL client instead of pg",
   "license": "MIT",
   "type": "module",
@@ -8,7 +8,11 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": ["src", "LICENSE", "README.md"],
+  "files": [
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ONREZA/prisma-adapter-bun.git"
@@ -17,7 +21,16 @@
     "url": "https://github.com/ONREZA/prisma-adapter-bun/issues"
   },
   "homepage": "https://github.com/ONREZA/prisma-adapter-bun#readme",
-  "keywords": ["prisma", "bun", "bun-sql", "postgresql", "postgres", "driver-adapter", "database", "orm"],
+  "keywords": [
+    "prisma",
+    "bun",
+    "bun-sql",
+    "postgresql",
+    "postgres",
+    "driver-adapter",
+    "database",
+    "orm"
+  ],
   "engines": {
     "bun": ">=1.2.0"
   },
