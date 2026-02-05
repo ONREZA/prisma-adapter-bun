@@ -1,0 +1,59 @@
+{
+  // JSON Schema для автодополнения и валидации в IDE
+  "$schema": "node_modules/onreza-release/schema.json",
+
+  // Настройки генерации CHANGELOG
+  "changelog": {
+    "showAuthor": true,
+    "showHash": true,
+    "types": {
+      "feat": "✨ Features",
+      "fix": "🐛 Bug Fixes",
+      "docs": "📝 Documentation",
+      "style": "💄 Styles",
+      "refactor": "♻️ Refactoring",
+      "perf": "⚡ Performance",
+      "test": "✅ Tests",
+      "build": "🏗️ Build System",
+      "ci": "👷 CI/CD",
+      "chore": "🔧 Chores",
+      "revert": "⏪ Reverts"
+    }
+  },
+
+  // Настройки генерации commitlint конфига
+  "commitlint": {
+    "scopes": ["deps","ci","docs"],
+    "scopeRequired": false,
+    "headerMaxLength": 100
+  },
+
+  // Настройки Git операций
+  "git": {
+    "commitChanges": true,
+    "commitMessage": "chore(release): v{{version}} [skip ci]",
+    "push": true,
+    "tagMessage": "v{{version}}"
+    // beforeCommit: "bun run format" // Раскомментируйте для форматирования перед коммитом
+  },
+
+  // Настройки создания Release (GitVerse, GitHub, GitLab)
+  // Токен: GVR_TOKEN (GitVerse), GITHUB_TOKEN (GitHub), GITLAB_TOKEN (GitLab)
+  "release": {
+    "enabled": true,
+    "platform": "auto",  // auto | gitverse | github | gitlab
+    "checkExisting": true,
+    "failOnError": true
+  },
+
+  // Настройки монорепо
+  "monorepo": {
+    "enabled": false
+  },
+
+  // Настройки версионирования
+  "versioning": {
+    "tagPrefix": "v",
+    "prereleasePrefix": "beta"
+  }
+}

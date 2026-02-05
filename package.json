@@ -1,0 +1,59 @@
+{
+  "name": "@onreza/prisma-adapter-bun",
+  "version": "0.1.0",
+  "description": "Prisma 7+ driver adapter for Bun.sql — use Bun's built-in PostgreSQL client instead of pg",
+  "license": "MIT",
+  "type": "module",
+  "module": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ONREZA/prisma-adapter-bun.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ONREZA/prisma-adapter-bun/issues"
+  },
+  "homepage": "https://github.com/ONREZA/prisma-adapter-bun#readme",
+  "keywords": [
+    "prisma",
+    "bun",
+    "bun-sql",
+    "postgresql",
+    "postgres",
+    "driver-adapter",
+    "database",
+    "orm"
+  ],
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "dependencies": {
+    "@prisma/driver-adapter-utils": "^7.3.0"
+  },
+  "devDependencies": {
+    "@prisma/client": "^7.3.0",
+    "@types/bun": "latest",
+    "onreza-release": "^2.3.0",
+    "prisma": "^7.3.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test tests/conversion.test.ts tests/errors.test.ts",
+    "test:integration": "bun test tests/adapter.test.ts",
+    "test:e2e": "bun test --timeout 120000 tests/factory.test.ts tests/prisma.test.ts",
+    "test:all": "bun test --timeout 120000",
+    "prepublishOnly": "tsc --noEmit",
+    "release": "onreza-release",
+    "release:dry": "onreza-release --dry-run"
+  }
+}
