@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-02-05
+
+### 🐛 Bug Fixes
+
+- replace constructor parameter properties with explicit field declarations ([b0f7370](https://github.com/ONREZA/prisma-adapter-bun/commit/b0f737063bfeb63a6ce41be12a7571e7b090ae17)) by @Ivan Bobchenkov
+- **ci:** use bunx for prepublishOnly, make prepare graceful ([2769b91](https://github.com/ONREZA/prisma-adapter-bun/commit/2769b914e6657f159b54fd43de6d0f16939b245a)) by @Ivan Bobchenkov
+
 ## [0.3.0] - 2026-02-05
 
 ### ✨ Features
