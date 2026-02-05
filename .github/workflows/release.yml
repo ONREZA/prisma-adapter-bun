@@ -19,11 +19,6 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-
       - run: bun install --frozen-lockfile
 
       - name: Configure Git
@@ -46,6 +41,6 @@ jobs:
         run: bun test tests/conversion.test.ts tests/errors.test.ts
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: bun publish --access public --tolerate-republish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
