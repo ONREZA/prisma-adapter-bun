@@ -34,6 +34,7 @@
     "commitChanges": true,
     "commitMessage": "chore(release): v{{version}} [skip ci]",
     "push": true,
+    "skipHooks": true,
     "tagMessage": "v{{version}}"
   },
 
