@@ -1,106 +1,75 @@
+# @onreza/prisma-adapter-bun
 
-Default to using Bun instead of Node.js.
+Prisma 7+ driver adapter for Bun.sql (built-in PostgreSQL client).
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Runtime
 
-## APIs
+Use Bun (>=1.2.0), not Node.js.
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+- `bun install`, `bun test`, `bun run <script>`, `bunx <pkg>`
+- Bun auto-loads `.env` — don't use dotenv
+- `Bun.sql` for PostgreSQL — don't use `pg` or `postgres.js`
+
+## Architecture
+
+```
+src/
+  index.ts        — Public API: PrismaBun (factory alias), PrismaBunAdapter, types
+  adapter.ts      — BunQueryable -> PrismaBunAdapter (SqlDriverAdapter), BunTransaction
+  factory.ts      — PrismaBunFactory (SqlMigrationAwareDriverAdapterFactory), shadow DB
+  conversion.ts   — PostgreSQL OID <-> Prisma ColumnType, value normalizers, mapArg
+  errors.ts       — SQL.PostgresError -> DriverAdapterError mapping
+  types.ts        — PrismaBunOptions, BunSqlConfig, ColumnMetadata
+```
+
+## Key Technical Details
+
+### Bun.sql specifics
+- **No `.columns` metadata** on query results — types inferred from JS values (`inferOidFromValue`)
+- **`instanceof SQL` doesn't work** — use duck-typing (`isSqlClient()` in factory.ts)
+- **`sql.unsafe()` doesn't accept JS arrays** — convert to PG array literal `{a,b,c}` via `toPgArrayLiteral()`
+- **Error codes**: `SQL.PostgresError.errno` = PG code (`42P01`), `.code` = Bun internal code
+- **DML row count**: use `result.count`, not `result.length` (which is 0 for INSERT/UPDATE/DELETE)
+
+### Prisma 7
+- No `url` in datasource block — configured in `prisma.config.ts`
+- PrismaClient requires `adapter` (SqlDriverAdapterFactory)
+- Generated client: `prisma/generated/client.ts` (gitignored, run `bunx prisma generate`)
+
+## Commands
+
+```sh
+bun run check             # biome check + tsc --noEmit
+bun run lint:fix           # biome auto-fix
+bun run format             # biome format
+bun run test               # unit tests (no DB needed)
+bun run test:integration   # adapter tests (needs DATABASE_URL)
+bun run test:e2e           # factory + prisma tests (needs Docker)
+bun run test:all           # all 139 tests (needs DATABASE_URL + Docker)
+```
 
 ## Testing
 
-Use `bun test` to run tests.
+- Unit tests (`conversion.test.ts`, `errors.test.ts`): no external dependencies
+- Integration (`adapter.test.ts`): requires `DATABASE_URL` pointing to PostgreSQL
+- E2E (`factory.test.ts`, `prisma.test.ts`): start Docker containers via `tests/helpers/pg-container.ts`
+- `metadata-probe.test.ts`: diagnostic — detects when Bun adds native column metadata support
+- Before running typecheck, generate Prisma client: `bunx prisma generate`
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+## Code Style
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
+- **Biome** for linting and formatting (not ESLint/Prettier)
+- **Lefthook** git hooks: pre-commit (biome + typecheck), pre-push (+ tests), commit-msg (commitlint)
+- **Conventional Commits** enforced. Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `style`, `revert`. Scopes: `deps`, `ci`, `docs`, `release`
+- No `any` — use `unknown` + type narrowing
+- No constructor parameter properties (`erasableSyntaxOnly` compatibility)
+- Top-level regex constants (biome: `useTopLevelRegex`)
+- No barrel files except `src/index.ts`
 
-## Frontend
+## Release
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
-
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+- **onreza-release** for versioning, CHANGELOG, GitHub Releases
+- Config: `.onrezarelease.jsonc`
+- `skipHooks: true` bypasses lefthook during release commits
+- CI workflow: `.github/workflows/release.yml` (manual trigger)
+- Publishing: `npm publish --provenance` with OIDC trusted publishing (no NPM_TOKEN needed)
