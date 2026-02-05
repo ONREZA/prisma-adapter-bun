@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-02-05
+
+### ✨ Features
+
+- validate PostgreSQL connection URL parameters ([de93dae](https://github.com/ONREZA/prisma-adapter-bun/commit/de93daedc42321da62e4d874709b3dd0f49d4454)) by Ivan Bobchenkov
+
+### 🐛 Bug Fixes
+
+- **ci:** remove registry-url to fix OIDC trusted publishing ([ae47fad](https://github.com/ONREZA/prisma-adapter-bun/commit/ae47fad6d589d0a563ab5350f8189803c4ff1707)) by Ivan Bobchenkov
+- **ci:** use npm publish with provenance for trusted publishing ([9dd77d3](https://github.com/ONREZA/prisma-adapter-bun/commit/9dd77d3b0190e36883f613d5a6bbdaba4b9ce97d)) by Ivan Bobchenkov
+- **ci:** switch from npm publish to bun publish ([b461f69](https://github.com/ONREZA/prisma-adapter-bun/commit/b461f699640b0053e9688173fe5624440f26dec8)) by Ivan Bobchenkov
+
+### 📝 Documentation
+
+- update CLAUDE.md with project-specific instructions ([a65a9ca](https://github.com/ONREZA/prisma-adapter-bun/commit/a65a9ca4400a5a99e2f0b1ae6fd100d2e3ed5499)) by Ivan Bobchenkov
+- add issue templates, PR template, CODEOWNERS, and community files ([2adbc06](https://github.com/ONREZA/prisma-adapter-bun/commit/2adbc06708a8b683fcc2c386fddd6a522d939736)) by Ivan Bobchenkov
+
 ## [0.3.2] - 2026-02-05
 
 ### 🐛 Bug Fixes

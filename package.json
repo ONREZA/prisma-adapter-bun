@@ -1,6 +1,6 @@
 {
   "name": "@onreza/prisma-adapter-bun",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Prisma 7+ driver adapter for Bun.sql — use Bun's built-in PostgreSQL client instead of pg",
   "license": "MIT",
   "type": "module",
