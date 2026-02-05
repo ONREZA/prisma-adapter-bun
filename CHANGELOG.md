@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3] - 2026-02-05
+
+### 🐛 Bug Fixes
+
+- prevent double-stringification of JSON arguments in mapArg ([92c1956](https://github.com/ONREZA/prisma-adapter-bun/commit/92c1956afd60ac9299ba5d73b30a5c33cce17264)) by Ivan Bobchenkov
+
 ## [0.4.2] - 2026-02-05
 
 ### 🐛 Bug Fixes
