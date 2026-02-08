@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-02-08
+
+### 🐛 Bug Fixes
+
+- correct type inference for INTEGER, BIGINT and string-based PostgreSQL types ([32b9f89](https://github.com/ONREZA/prisma-adapter-bun/commit/32b9f897e007c214aa3ef99da48fc5782e1d504c)) by Ivan Bobchenkov
+
 ## [0.5.0] - 2026-02-08
 
 ### ✨ Features
