@@ -1,11 +1,17 @@
 import { type ArgType, type ColumnType, ColumnTypeEnum } from "@prisma/driver-adapter-utils";
 
 // Top-level regex constants (biome: useTopLevelRegex)
-const RE_TIMESTAMPTZ_OFFSET = /([+-]\d{2})$/;
+const RE_TIMESTAMPTZ_OFFSET = /([+-]\d{2})(:\d{2})?$/;
 const RE_TIMETZ_STRIP = /[+-]\d{2}(:\d{2})?$/;
-const RE_MONEY_SYMBOL = /^\$/;
+const RE_MONEY_SYMBOL = /\$/g;
 const RE_PG_ESCAPE_BACKSLASH = /\\/g;
 const RE_PG_ESCAPE_QUOTE = /"/g;
+const RE_INT8_STRING = /^-?\d+$/;
+const RE_NUMERIC_STRING = /^-?\d+\.\d+$/;
+const RE_UUID_STRING = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RE_TIME_STRING = /^(\d{2}:\d{2}:\d{2})(\.\d+)?([+-]\d{2}(:\d{2})?)?$/;
+const RE_MONEY_STRING = /^-?\$[\d,]+\.\d{2}$/;
+const RE_BIT_STRING = /^[01]+$/;
 
 // PostgreSQL OIDs (from pg_type system catalog)
 export const PgOid = {
@@ -200,7 +206,8 @@ function normalizeTimestamptz(value: unknown): unknown {
   }
   if (typeof value === "string") {
     // Normalize various timezone formats to +00:00
-    return value.replace(" ", "T").replace(RE_TIMESTAMPTZ_OFFSET, "$1:00");
+    // Only add :00 if not already present (e.g., "+03" → "+03:00", but "+03:00" stays as is)
+    return value.replace(" ", "T").replace(RE_TIMESTAMPTZ_OFFSET, "$1$2");
   }
   return value;
 }
@@ -224,6 +231,10 @@ function normalizeTime(value: unknown): unknown {
   if (value instanceof Date) {
     return formatTime(value);
   }
+  // Bun.sql returns TIME as string (e.g., "14:30:00")
+  if (typeof value === "string") {
+    return value;
+  }
   return value;
 }
 
@@ -233,6 +244,8 @@ function normalizeNumeric(value: unknown): unknown {
 
 function normalizeMoney(value: unknown): unknown {
   const s = String(value);
+  // Remove $ symbol, preserving minus sign if present
+  // Handles: "$100.50" -> "100.50", "-$100.50" -> "-100.50"
   return s.replace(RE_MONEY_SYMBOL, "");
 }
 
@@ -259,7 +272,19 @@ function normalizeArray(value: unknown, elementNormalizer: (v: unknown) => unkno
 
 type Normalizer = (value: unknown) => unknown;
 
+/**
+ * Normalize INT8 string to BigInt.
+ * Bun.sql returns BIGINT as string, but Prisma expects BigInt for Int64 columns.
+ */
+function normalizeInt8(value: unknown): unknown {
+  if (typeof value === "string") {
+    return BigInt(value);
+  }
+  return value;
+}
+
 export const resultNormalizers: Record<number, Normalizer> = {
+  [PgOid.INT8]: normalizeInt8,
   [PgOid.NUMERIC]: normalizeNumeric,
   [PgOid.MONEY]: normalizeMoney,
   [PgOid.TIME]: normalizeTime,
@@ -270,8 +295,14 @@ export const resultNormalizers: Record<number, Normalizer> = {
   [PgOid.JSON]: normalizeJson,
   [PgOid.JSONB]: normalizeJson,
   [PgOid.BYTEA]: normalizeBytes,
+  // BIT/VARBIT are returned as strings by Bun.sql
+  [PgOid.BIT]: String,
+  [PgOid.VARBIT]: String,
+  // UUID is returned as string by Bun.sql
+  [PgOid.UUID]: String,
 
   // Array normalizers
+  [PgOid.INT8_ARRAY]: (v) => normalizeArray(v, normalizeInt8),
   [PgOid.NUMERIC_ARRAY]: (v) => normalizeArray(v, normalizeNumeric),
   [PgOid.MONEY_ARRAY]: (v) => normalizeArray(v, normalizeMoney),
   [PgOid.TIME_ARRAY]: (v) => normalizeArray(v, normalizeTime),
@@ -284,18 +315,124 @@ export const resultNormalizers: Record<number, Normalizer> = {
   [PgOid.BYTEA_ARRAY]: (v) => normalizeArray(v, normalizeBytes),
   [PgOid.BIT_ARRAY]: (v) => normalizeArray(v, String),
   [PgOid.VARBIT_ARRAY]: (v) => normalizeArray(v, String),
+  [PgOid.UUID_ARRAY]: (v) => normalizeArray(v, String),
   [PgOid.XML_ARRAY]: (v) => normalizeArray(v, String),
 };
 
 // --- Type inference (fallback when .columns metadata is unavailable) ---
+
+// INT32 range: -2,147,483,648 to 2,147,483,647
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+/**
+ * Check if a number fits in INT32 range.
+ */
+function isInt32(num: number): boolean {
+  return Number.isInteger(num) && num >= INT32_MIN && num <= INT32_MAX;
+}
+
+/**
+ * Check if a string represents an INT8 (bigint) value.
+ * Used to distinguish BIGINT columns (returned as strings by Bun.sql)
+ * from plain TEXT columns.
+ */
+function isInt8String(value: string): boolean {
+  if (!RE_INT8_STRING.test(value)) return false;
+  // Check if value is outside INT32 range or has more than 10 digits
+  // (indicating it's likely a BIGINT, not INT4)
+  // Note: account for minus sign when checking length
+  const signOffset = value.startsWith("-") ? 1 : 0;
+  if (value.length - signOffset > 10) return true;
+  // For values within 10 digits, check the actual numeric range
+  const num = Number(value);
+  if (!Number.isFinite(num)) return true; // Very large number, treat as INT8
+  return num < INT32_MIN || num > INT32_MAX;
+}
+
+/**
+ * Check if a string represents a NUMERIC/DECIMAL value.
+ * Bun.sql returns NUMERIC as string (e.g., "99.99").
+ */
+function isNumericString(value: string): boolean {
+  return RE_NUMERIC_STRING.test(value);
+}
+
+/**
+ * Check if a string represents a UUID value.
+ * Bun.sql returns UUID as string (e.g., "550e8400-e29b-41d4-a716-446655440000").
+ */
+function isUuidString(value: string): boolean {
+  return RE_UUID_STRING.test(value);
+}
+
+/**
+ * Check if a string represents a TIME value (without timezone).
+ * Bun.sql returns TIME as string (e.g., "14:30:00").
+ */
+function isTimeString(value: string): boolean {
+  return RE_TIME_STRING.test(value) && !value.includes("+") && !value.includes("-");
+}
+
+/**
+ * Check if a string represents a TIMETZ value (with timezone).
+ * Bun.sql returns TIMETZ as string (e.g., "14:30:00+03").
+ */
+function isTimetzString(value: string): boolean {
+  return RE_TIME_STRING.test(value) && (value.includes("+") || value.includes("-"));
+}
+
+/**
+ * Check if a string represents a MONEY value.
+ * Bun.sql returns MONEY as string (e.g., "$100.50").
+ */
+function isMoneyString(value: string): boolean {
+  return RE_MONEY_STRING.test(value);
+}
+
+/**
+ * Check if a string represents a BIT/VARBIT value.
+ * Bun.sql returns BIT as string of 0s and 1s (e.g., "10101010").
+ * Important: must check before isInt8String to avoid misclassifying
+ * bit strings like "101010101010" as BIGINT.
+ */
+function isBitString(value: string): boolean {
+  // Must be non-empty, only 0s and 1s
+  if (value.length === 0) return false;
+  if (!RE_BIT_STRING.test(value)) return false;
+  // Exclude values that look like valid integers 2-9 (single digits that are not 0 or 1)
+  // Bit strings are typically longer or contain only 0/1
+  if (value.length === 1) return value === "0" || value === "1";
+  return true;
+}
+
+/**
+ * Infer OID for a string element in an array.
+ * Separated to reduce complexity of inferArrayOid.
+ */
+function inferStringArrayOid(value: string): number {
+  // Order matters: check more specific patterns first
+  if (isBitString(value)) return PgOid.BIT_ARRAY;
+  if (isUuidString(value)) return PgOid.UUID_ARRAY;
+  // TIMETZ must be checked before TIME
+  if (isTimetzString(value)) return PgOid.TIMETZ_ARRAY;
+  if (isTimeString(value)) return PgOid.TIME_ARRAY;
+  if (isMoneyString(value)) return PgOid.MONEY_ARRAY;
+  if (isInt8String(value)) return PgOid.INT8_ARRAY;
+  if (isNumericString(value)) return PgOid.NUMERIC_ARRAY;
+  return PgOid.TEXT_ARRAY;
+}
 
 function inferArrayOid(arr: unknown[]): number {
   if (arr.length === 0) return PgOid.TEXT_ARRAY;
   const first = arr.find((v) => v !== null && v !== undefined);
   if (first === undefined) return PgOid.TEXT_ARRAY;
   if (typeof first === "number") {
-    return Number.isInteger(first) ? PgOid.INT8_ARRAY : PgOid.FLOAT8_ARRAY;
+    if (!Number.isInteger(first)) return PgOid.FLOAT8_ARRAY;
+    return isInt32(first) ? PgOid.INT4_ARRAY : PgOid.INT8_ARRAY;
   }
+  if (typeof first === "bigint") return PgOid.INT8_ARRAY;
+  if (typeof first === "string") return inferStringArrayOid(first);
   if (typeof first === "boolean") return PgOid.BOOL_ARRAY;
   if (first instanceof Date) return PgOid.TIMESTAMPTZ_ARRAY;
   if (first instanceof Uint8Array || first instanceof Buffer) return PgOid.BYTEA_ARRAY;
@@ -324,6 +461,31 @@ function isJsonString(value: string): boolean {
 }
 
 /**
+ * Infer OID for a string value.
+ * Separated to reduce cognitive complexity of inferOidFromValue.
+ */
+function inferStringOid(value: string): number {
+  if (isJsonString(value)) return PgOid.JSON;
+  // Order matters: check more specific patterns before generic ones
+  // BIT strings (e.g., "10101010") - must check before INT8 to avoid misclassification
+  if (isBitString(value)) return PgOid.BIT;
+  // UUID strings (e.g., "550e8400-e29b-41d4-a716-446655440000")
+  if (isUuidString(value)) return PgOid.UUID;
+  // TIMETZ strings (e.g., "14:30:00+03") - must check before TIME
+  if (isTimetzString(value)) return PgOid.TIMETZ;
+  // TIME strings (e.g., "14:30:00")
+  if (isTimeString(value)) return PgOid.TIME;
+  // MONEY strings (e.g., "$100.50")
+  if (isMoneyString(value)) return PgOid.MONEY;
+  // BIGINT columns are returned as strings by Bun.sql
+  // We need to detect them to return correct ColumnType (Int64, not Text)
+  if (isInt8String(value)) return PgOid.INT8;
+  // NUMERIC/DECIMAL columns are returned as strings by Bun.sql
+  if (isNumericString(value)) return PgOid.NUMERIC;
+  return PgOid.TEXT;
+}
+
+/**
  * Infer a PostgreSQL OID from a JavaScript value.
  * Used as a fallback when Bun.sql doesn't expose column metadata.
  * The inferred OID is then mapped to ColumnType via fieldToColumnType().
@@ -333,13 +495,15 @@ export function inferOidFromValue(value: unknown): number {
   if (typeof value === "boolean") return PgOid.BOOL;
   if (typeof value === "bigint") return PgOid.INT8;
   if (typeof value === "number") {
-    return Number.isInteger(value) ? PgOid.INT8 : PgOid.FLOAT8;
+    if (!Number.isInteger(value)) return PgOid.FLOAT8;
+    // Distinguish INT4 vs INT8 based on value range
+    return isInt32(value) ? PgOid.INT4 : PgOid.INT8;
   }
   if (value instanceof Date) return PgOid.TIMESTAMPTZ;
   if (value instanceof Uint8Array || value instanceof Buffer) return PgOid.BYTEA;
   if (Array.isArray(value)) return inferArrayOid(value);
   if (typeof value === "object") return PgOid.JSONB;
-  if (typeof value === "string" && isJsonString(value)) return PgOid.JSON;
+  if (typeof value === "string") return inferStringOid(value);
   return PgOid.TEXT;
 }
 

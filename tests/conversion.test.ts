@@ -181,6 +181,26 @@ describe("mapArg", () => {
 });
 
 describe("resultNormalizers", () => {
+  test("normalizes INT8 string to BigInt", () => {
+    const normalizer = resultNormalizers[PgOid.INT8]!;
+    // Bun.sql returns BIGINT as string
+    expect(normalizer("3000000000")).toBe(BigInt(3000000000));
+    expect(normalizer("9999999999999")).toBe(BigInt(9999999999999));
+    expect(normalizer("-2147483649")).toBe(BigInt(-2147483649));
+    // Small values
+    expect(normalizer("42")).toBe(BigInt(42));
+    // Already BigInt: passthrough
+    expect(normalizer(BigInt(42))).toBe(BigInt(42));
+    // Null: passthrough
+    expect(normalizer(null)).toBe(null);
+  });
+
+  test("normalizes INT8 array strings to BigInt array", () => {
+    const normalizer = resultNormalizers[PgOid.INT8_ARRAY]!;
+    const result = normalizer(["3000000000", "9999999999999", null]);
+    expect(result).toEqual([BigInt(3000000000), BigInt(9999999999999), null]);
+  });
+
   test("normalizes JSON objects to strings", () => {
     const normalizer = resultNormalizers[PgOid.JSON]!;
     expect(normalizer({ key: "value" })).toBe('{"key":"value"}');
@@ -213,6 +233,9 @@ describe("resultNormalizers", () => {
     const normalizer = resultNormalizers[PgOid.MONEY]!;
     expect(normalizer("$100.50")).toBe("100.50");
     expect(normalizer("50.00")).toBe("50.00");
+    // Negative values
+    expect(normalizer("-$100.50")).toBe("-100.50");
+    expect(normalizer("-50.00")).toBe("-50.00");
   });
 
   test("normalizes TIMESTAMP Date to ISO", () => {
@@ -230,6 +253,15 @@ describe("resultNormalizers", () => {
     const result = normalizer(d) as string;
     expect(result).toContain("2024-06-15");
     expect(result).toContain("+00:00");
+  });
+
+  test("normalizes TIMESTAMPTZ string with various timezone formats", () => {
+    const normalizer = resultNormalizers[PgOid.TIMESTAMPTZ]!;
+    // Short format should be preserved
+    expect(normalizer("2024-06-15 12:30:00+03")).toBe("2024-06-15T12:30:00+03");
+    // Full format should be preserved (not double-appended)
+    expect(normalizer("2024-06-15 12:30:00+05:30")).toBe("2024-06-15T12:30:00+05:30");
+    expect(normalizer("2024-06-15 12:30:00-03:00")).toBe("2024-06-15T12:30:00-03:00");
   });
 
   test("normalizes DATE to string", () => {
@@ -268,6 +300,33 @@ describe("resultNormalizers", () => {
     const result = normalizer([1.5, 2.5, 3.5]);
     expect(result).toEqual(["1.5", "2.5", "3.5"]);
   });
+
+  test("normalizes BIT strings", () => {
+    const normalizer = resultNormalizers[PgOid.BIT]!;
+    expect(normalizer("10101010")).toBe("10101010");
+    expect(normalizer("0")).toBe("0");
+    expect(normalizer("1")).toBe("1");
+    // Numbers should be converted to strings
+    expect(normalizer(10101010)).toBe("10101010");
+  });
+
+  test("normalizes VARBIT strings", () => {
+    const normalizer = resultNormalizers[PgOid.VARBIT]!;
+    expect(normalizer("101010101010")).toBe("101010101010");
+    expect(normalizer("")).toBe("");
+  });
+
+  test("normalizes BIT arrays", () => {
+    const normalizer = resultNormalizers[PgOid.BIT_ARRAY]!;
+    const result = normalizer(["10101010", "11110000"]);
+    expect(result).toEqual(["10101010", "11110000"]);
+  });
+
+  test("normalizes VARBIT arrays", () => {
+    const normalizer = resultNormalizers[PgOid.VARBIT_ARRAY]!;
+    const result = normalizer(["1010", "111100001111"]);
+    expect(result).toEqual(["1010", "111100001111"]);
+  });
 });
 
 describe("inferOidFromValue", () => {
@@ -281,10 +340,27 @@ describe("inferOidFromValue", () => {
     expect(inferOidFromValue(false)).toBe(PgOid.BOOL);
   });
 
-  test("integer -> INT8", () => {
-    expect(inferOidFromValue(42)).toBe(PgOid.INT8);
-    expect(inferOidFromValue(0)).toBe(PgOid.INT8);
-    expect(inferOidFromValue(-100)).toBe(PgOid.INT8);
+  test("integer in INT32 range -> INT4", () => {
+    expect(inferOidFromValue(42)).toBe(PgOid.INT4);
+    expect(inferOidFromValue(0)).toBe(PgOid.INT4);
+    expect(inferOidFromValue(-100)).toBe(PgOid.INT4);
+    expect(inferOidFromValue(2147483647)).toBe(PgOid.INT4); // INT32_MAX
+    expect(inferOidFromValue(-2147483648)).toBe(PgOid.INT4); // INT32_MIN
+  });
+
+  test("integer outside INT32 range -> INT8", () => {
+    expect(inferOidFromValue(2147483648)).toBe(PgOid.INT8); // INT32_MAX + 1
+    expect(inferOidFromValue(-2147483649)).toBe(PgOid.INT8); // INT32_MIN - 1
+    expect(inferOidFromValue(9007199254740991)).toBe(PgOid.INT8); // MAX_SAFE_INTEGER
+  });
+
+  test("INT32 boundary strings are correctly identified", () => {
+    // INT32_MIN as string should be recognized as INT4 (number), not INT8
+    // Note: "-2147483648".length === 11, but it's valid INT32
+    expect(inferOidFromValue("-2147483648")).toBe(PgOid.TEXT); // Small numeric string -> TEXT
+    expect(inferOidFromValue("-2147483649")).toBe(PgOid.INT8); // INT32_MIN - 1 -> INT8
+    expect(inferOidFromValue("2147483647")).toBe(PgOid.TEXT); // INT32_MAX as string -> TEXT
+    expect(inferOidFromValue("2147483648")).toBe(PgOid.INT8); // INT32_MAX + 1 -> INT8
   });
 
   test("float -> FLOAT8", () => {
@@ -299,8 +375,75 @@ describe("inferOidFromValue", () => {
   test("string -> TEXT", () => {
     expect(inferOidFromValue("hello")).toBe(PgOid.TEXT);
     expect(inferOidFromValue("")).toBe(PgOid.TEXT);
-    expect(inferOidFromValue("123")).toBe(PgOid.TEXT);
     expect(inferOidFromValue("true")).toBe(PgOid.TEXT);
+    expect(inferOidFromValue("abc123")).toBe(PgOid.TEXT);
+  });
+
+  test("numeric string in INT32 range -> TEXT (treated as text, not bigint)", () => {
+    // Small numeric strings are treated as TEXT unless they look like BIGINT
+    expect(inferOidFromValue("123")).toBe(PgOid.TEXT);
+    expect(inferOidFromValue("-456")).toBe(PgOid.TEXT);
+    expect(inferOidFromValue("2147483647")).toBe(PgOid.TEXT); // INT32_MAX as string
+  });
+
+  test("numeric string outside INT32 range -> INT8 (bigint string)", () => {
+    // Bun.sql returns BIGINT columns as strings
+    expect(inferOidFromValue("2147483648")).toBe(PgOid.INT8); // INT32_MAX + 1
+    expect(inferOidFromValue("-2147483649")).toBe(PgOid.INT8); // INT32_MIN - 1
+    expect(inferOidFromValue("3000000000")).toBe(PgOid.INT8);
+    expect(inferOidFromValue("9999999999999")).toBe(PgOid.INT8);
+  });
+
+  test("numeric string with decimal point -> NUMERIC", () => {
+    // Bun.sql returns NUMERIC/DECIMAL as strings
+    expect(inferOidFromValue("99.99")).toBe(PgOid.NUMERIC);
+    expect(inferOidFromValue("123.456")).toBe(PgOid.NUMERIC);
+    expect(inferOidFromValue("-0.001")).toBe(PgOid.NUMERIC);
+    expect(inferOidFromValue("999999999999999999.999999")).toBe(PgOid.NUMERIC);
+  });
+
+  test("UUID string -> UUID", () => {
+    expect(inferOidFromValue("550e8400-e29b-41d4-a716-446655440000")).toBe(PgOid.UUID);
+    expect(inferOidFromValue("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")).toBe(PgOid.UUID);
+    // Lowercase
+    expect(inferOidFromValue("A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11".toLowerCase())).toBe(PgOid.UUID);
+  });
+
+  test("TIME string -> TIME", () => {
+    expect(inferOidFromValue("14:30:00")).toBe(PgOid.TIME);
+    expect(inferOidFromValue("00:00:00")).toBe(PgOid.TIME);
+    expect(inferOidFromValue("23:59:59")).toBe(PgOid.TIME);
+  });
+
+  test("TIMETZ string -> TIMETZ", () => {
+    // With timezone offset
+    expect(inferOidFromValue("14:30:00+03")).toBe(PgOid.TIMETZ);
+    expect(inferOidFromValue("14:30:00-05:00")).toBe(PgOid.TIMETZ);
+    expect(inferOidFromValue("00:00:00+00")).toBe(PgOid.TIMETZ);
+    // Full timezone offset with minutes
+    expect(inferOidFromValue("14:30:00+05:30")).toBe(PgOid.TIMETZ);
+    expect(inferOidFromValue("14:30:00-03:30")).toBe(PgOid.TIMETZ);
+  });
+
+  test("MONEY string -> MONEY", () => {
+    expect(inferOidFromValue("$100.50")).toBe(PgOid.MONEY);
+    expect(inferOidFromValue("$1,000.00")).toBe(PgOid.MONEY);
+    expect(inferOidFromValue("$0.99")).toBe(PgOid.MONEY);
+  });
+
+  test("BIT string -> BIT", () => {
+    // Bit strings (only 0s and 1s)
+    expect(inferOidFromValue("10101010")).toBe(PgOid.BIT);
+    expect(inferOidFromValue("0")).toBe(PgOid.BIT);
+    expect(inferOidFromValue("1")).toBe(PgOid.BIT);
+    expect(inferOidFromValue("1111000011110000")).toBe(PgOid.BIT);
+  });
+
+  test("regular numeric string is not BIT", () => {
+    // Regular integers should not be detected as BIT
+    expect(inferOidFromValue("123")).toBe(PgOid.TEXT); // Small number -> TEXT
+    expect(inferOidFromValue("1234567890")).toBe(PgOid.TEXT); // 10-digit number -> TEXT
+    expect(inferOidFromValue("3000000000")).toBe(PgOid.INT8); // Big number -> INT8
   });
 
   test("JSON object string -> JSON", () => {
@@ -334,9 +477,48 @@ describe("inferOidFromValue", () => {
     expect(inferOidFromValue({ key: "value" })).toBe(PgOid.JSONB);
   });
 
-  test("array of numbers -> INT8_ARRAY or FLOAT8_ARRAY", () => {
-    expect(inferOidFromValue([1, 2, 3])).toBe(PgOid.INT8_ARRAY);
+  test("array of numbers -> INT4_ARRAY, INT8_ARRAY or FLOAT8_ARRAY", () => {
+    expect(inferOidFromValue([1, 2, 3])).toBe(PgOid.INT4_ARRAY);
+    expect(inferOidFromValue([2147483647])).toBe(PgOid.INT4_ARRAY); // INT32_MAX
+    expect(inferOidFromValue([2147483648])).toBe(PgOid.INT8_ARRAY); // INT32_MAX + 1
     expect(inferOidFromValue([1.5, 2.5])).toBe(PgOid.FLOAT8_ARRAY);
+  });
+
+  test("array of numeric strings -> NUMERIC_ARRAY", () => {
+    expect(inferOidFromValue(["99.99", "100.50"])).toBe(PgOid.NUMERIC_ARRAY);
+    expect(inferOidFromValue(["0.001"])).toBe(PgOid.NUMERIC_ARRAY);
+  });
+
+  test("array of bigint strings -> INT8_ARRAY", () => {
+    expect(inferOidFromValue(["3000000000", "4000000000"])).toBe(PgOid.INT8_ARRAY);
+    expect(inferOidFromValue(["2147483648"])).toBe(PgOid.INT8_ARRAY);
+  });
+
+  test("array of UUID strings -> UUID_ARRAY", () => {
+    expect(inferOidFromValue(["550e8400-e29b-41d4-a716-446655440000"])).toBe(PgOid.UUID_ARRAY);
+    expect(inferOidFromValue(["550e8400-e29b-41d4-a716-446655440000", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"])).toBe(
+      PgOid.UUID_ARRAY,
+    );
+  });
+
+  test("array of TIME strings -> TIME_ARRAY", () => {
+    expect(inferOidFromValue(["14:30:00"])).toBe(PgOid.TIME_ARRAY);
+    expect(inferOidFromValue(["00:00:00", "23:59:59"])).toBe(PgOid.TIME_ARRAY);
+  });
+
+  test("array of TIMETZ strings -> TIMETZ_ARRAY", () => {
+    expect(inferOidFromValue(["14:30:00+03"])).toBe(PgOid.TIMETZ_ARRAY);
+    expect(inferOidFromValue(["14:30:00+03", "10:00:00-05:00"])).toBe(PgOid.TIMETZ_ARRAY);
+  });
+
+  test("array of MONEY strings -> MONEY_ARRAY", () => {
+    expect(inferOidFromValue(["$100.50"])).toBe(PgOid.MONEY_ARRAY);
+    expect(inferOidFromValue(["$100.50", "$200.00"])).toBe(PgOid.MONEY_ARRAY);
+  });
+
+  test("array of BIT strings -> BIT_ARRAY", () => {
+    expect(inferOidFromValue(["10101010"])).toBe(PgOid.BIT_ARRAY);
+    expect(inferOidFromValue(["0", "1"])).toBe(PgOid.BIT_ARRAY);
   });
 
   test("array of booleans -> BOOL_ARRAY", () => {

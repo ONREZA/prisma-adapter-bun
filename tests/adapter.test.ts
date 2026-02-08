@@ -384,4 +384,293 @@ describe.skipIf(!canConnect)("PrismaBunAdapter integration", () => {
       expect(e.cause.kind).toBe("TableDoesNotExist");
     }
   });
+
+  test("queryRaw: INTEGER returns Int32 column type with number value", async () => {
+    // Create table with INTEGER (INT4) column
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _int_test;
+      CREATE TABLE _int_test (id SERIAL PRIMARY KEY, int_col INTEGER, bigint_col BIGINT);
+      INSERT INTO _int_test (int_col, bigint_col) VALUES (30, 3000000000);
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT id, int_col, bigint_col FROM _int_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+
+    // id (SERIAL = INTEGER/INT4) should be Int32 with number value
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Int32);
+    expect(typeof row[0]).toBe("number");
+    expect(row[0]).toBe(1);
+
+    // int_col (INTEGER/INT4) should be Int32 with number value
+    expect(result.columnTypes[1]).toBe(ColumnTypeEnum.Int32);
+    expect(typeof row[1]).toBe("number");
+    expect(row[1]).toBe(30);
+
+    // bigint_col (BIGINT/INT8) should be Int64 with BigInt value
+    expect(result.columnTypes[2]).toBe(ColumnTypeEnum.Int64);
+    expect(typeof row[2]).toBe("bigint");
+    expect(row[2]).toBe(BigInt(3000000000));
+
+    await client.unsafe("DROP TABLE _int_test").simple();
+  });
+
+  test("queryRaw: BIGINT boundary values return correct types", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _bigint_test;
+      CREATE TABLE _bigint_test (
+        int32_max INTEGER,
+        int32_max_plus_1 BIGINT,
+        int32_min INTEGER,
+        int32_min_minus_1 BIGINT
+      );
+      INSERT INTO _bigint_test VALUES (
+        2147483647,
+        2147483648,
+        -2147483648,
+        -2147483649
+      );
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT int32_max, int32_max_plus_1, int32_min, int32_min_minus_1 FROM _bigint_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+
+    // INT32_MAX (2147483647) should be Int32
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Int32);
+    expect(row[0]).toBe(2147483647);
+
+    // INT32_MAX + 1 (2147483648) should be Int64 (BigInt)
+    expect(result.columnTypes[1]).toBe(ColumnTypeEnum.Int64);
+    expect(row[1]).toBe(BigInt(2147483648));
+
+    // INT32_MIN (-2147483648) should be Int32
+    expect(result.columnTypes[2]).toBe(ColumnTypeEnum.Int32);
+    expect(row[2]).toBe(-2147483648);
+
+    // INT32_MIN - 1 (-2147483649) should be Int64 (BigInt)
+    expect(result.columnTypes[3]).toBe(ColumnTypeEnum.Int64);
+    expect(row[3]).toBe(BigInt(-2147483649));
+
+    await client.unsafe("DROP TABLE _bigint_test").simple();
+  });
+
+  test("queryRaw: NULL values in INT/BIGINT columns", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _null_test;
+      CREATE TABLE _null_test (int_col INTEGER, bigint_col BIGINT);
+      INSERT INTO _null_test VALUES (NULL, NULL), (42, 3000000000);
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT int_col, bigint_col FROM _null_test ORDER BY int_col NULLS FIRST",
+    });
+
+    expect(result.rows.length).toBe(2);
+
+    // Column types should be inferred from first non-null value
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Int32);
+    expect(result.columnTypes[1]).toBe(ColumnTypeEnum.Int64);
+
+    // First row: NULLs
+    expect(result.rows[0]![0]).toBeNull();
+    expect(result.rows[0]![1]).toBeNull();
+
+    // Second row: values
+    expect(result.rows[1]![0]).toBe(42);
+    expect(result.rows[1]![1]).toBe(BigInt(3000000000));
+
+    await client.unsafe("DROP TABLE _null_test").simple();
+  });
+
+  test("queryRaw: NUMERIC/DECIMAL columns return correct type", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _numeric_test;
+      CREATE TABLE _numeric_test (price NUMERIC(10,2), amount DECIMAL(20,8));
+      INSERT INTO _numeric_test VALUES (99.99, 12345678.12345678);
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT price, amount FROM _numeric_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+
+    // Both should be Numeric type
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Numeric);
+    expect(result.columnTypes[1]).toBe(ColumnTypeEnum.Numeric);
+
+    // Values should be strings (normalized by resultNormalizers)
+    expect(typeof row[0]).toBe("string");
+    expect(typeof row[1]).toBe("string");
+    expect(row[0]).toBe("99.99");
+    expect(row[1]).toBe("12345678.12345678");
+
+    await client.unsafe("DROP TABLE _numeric_test").simple();
+  });
+
+  test("queryRaw: BIGINT arrays", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _bigint_array_test;
+      CREATE TABLE _bigint_array_test (big_arr BIGINT[]);
+      INSERT INTO _bigint_array_test VALUES (ARRAY[3000000000, 4000000000]);
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT big_arr FROM _bigint_array_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Int64Array);
+
+    // Array values should be BigInts
+    const arr = row[0] as unknown[];
+    expect(Array.isArray(arr)).toBe(true);
+    expect(arr.length).toBe(2);
+    expect(arr[0]).toBe(BigInt(3000000000));
+    expect(arr[1]).toBe(BigInt(4000000000));
+
+    await client.unsafe("DROP TABLE _bigint_array_test").simple();
+  });
+
+  test("queryRaw: UUID columns return correct type", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _uuid_test;
+      CREATE TABLE _uuid_test (id UUID);
+      INSERT INTO _uuid_test VALUES ('550e8400-e29b-41d4-a716-446655440000');
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT id FROM _uuid_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Uuid);
+    expect(typeof result.rows[0]![0]).toBe("string");
+    expect(result.rows[0]![0]).toBe("550e8400-e29b-41d4-a716-446655440000");
+
+    await client.unsafe("DROP TABLE _uuid_test").simple();
+  });
+
+  test("queryRaw: TIME columns return correct type", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _time_test;
+      CREATE TABLE _time_test (t TIME, tz TIMETZ);
+      INSERT INTO _time_test VALUES ('14:30:00', '14:30:00+03');
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT t, tz FROM _time_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+
+    // Both should be Time type
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Time);
+    expect(result.columnTypes[1]).toBe(ColumnTypeEnum.Time);
+
+    // Values should be strings
+    expect(typeof row[0]).toBe("string");
+    expect(row[0]).toBe("14:30:00");
+    // TIMETZ should have timezone stripped by normalizer
+    expect(typeof row[1]).toBe("string");
+    expect(row[1]).toBe("14:30:00");
+
+    await client.unsafe("DROP TABLE _time_test").simple();
+  });
+
+  test("queryRaw: MONEY columns return correct type", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _money_test;
+      CREATE TABLE _money_test (amount MONEY);
+      INSERT INTO _money_test VALUES ('$100.50');
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT amount FROM _money_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Numeric);
+    expect(typeof result.rows[0]![0]).toBe("string");
+    // $ should be stripped by normalizer
+    expect(result.rows[0]![0]).toBe("100.50");
+
+    await client.unsafe("DROP TABLE _money_test").simple();
+  });
+
+  test("queryRaw: BIT/VARBIT columns return correct type", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _bit_test;
+      CREATE TABLE _bit_test (bits BIT(8), varbits VARBIT(16));
+      INSERT INTO _bit_test VALUES (B'10101010', B'1111000011110000');
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT bits, varbits FROM _bit_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+
+    // Both should be Text type (mapped from BIT/VARBIT)
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Text);
+    expect(result.columnTypes[1]).toBe(ColumnTypeEnum.Text);
+
+    // Values should be strings
+    expect(typeof row[0]).toBe("string");
+    expect(typeof row[1]).toBe("string");
+    expect(row[0]).toBe("10101010");
+    expect(row[1]).toBe("1111000011110000");
+
+    await client.unsafe("DROP TABLE _bit_test").simple();
+  });
 });
