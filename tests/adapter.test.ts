@@ -673,4 +673,242 @@ describe.skipIf(!canConnect)("PrismaBunAdapter integration", () => {
 
     await client.unsafe("DROP TABLE _bit_test").simple();
   });
+
+  test("queryRaw: BIGINT column with small value (within INT32 range)", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _bigint_small_test;
+      CREATE TABLE _bigint_small_test (val BIGINT);
+      INSERT INTO _bigint_small_test VALUES (42);
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT val FROM _bigint_small_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    // Without column metadata, small BIGINT values may not be identified as Int64.
+    // This test documents the actual Bun.sql behavior for small BIGINT values.
+    const val = result.rows[0]![0];
+    expect(Number(val)).toBe(42);
+
+    await client.unsafe("DROP TABLE _bigint_small_test").simple();
+  });
+
+  test("queryRaw: MONEY values >= 1000 return valid numeric strings", async () => {
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _money_large_test;
+      CREATE TABLE _money_large_test (amount MONEY);
+      INSERT INTO _money_large_test VALUES (1234.56);
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT amount FROM _money_large_test",
+    });
+
+    expect(result.rows.length).toBe(1);
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Numeric);
+    const val = result.rows[0]![0] as string;
+    expect(typeof val).toBe("string");
+    // Must be a valid numeric string (no $ or commas after normalization)
+    expect(val).not.toContain("$");
+    expect(val).not.toContain(",");
+    expect(Number.parseFloat(val)).toBeCloseTo(1234.56, 2);
+
+    await client.unsafe("DROP TABLE _money_large_test").simple();
+  });
+
+  test("queryRaw: FLOAT8 special values (Infinity, NaN)", async () => {
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT 'NaN'::float8 as nan_val, 'Infinity'::float8 as inf_val, '-Infinity'::float8 as neg_inf_val",
+    });
+
+    expect(result.rows.length).toBe(1);
+    const row = result.rows[0]!;
+    expect(Number.isNaN(row[0] as number)).toBe(true);
+    expect(row[1]).toBe(Number.POSITIVE_INFINITY);
+    expect(row[2]).toBe(Number.NEGATIVE_INFINITY);
+    expect(result.columnTypes[0]).toBe(ColumnTypeEnum.Double);
+    expect(result.columnTypes[1]).toBe(ColumnTypeEnum.Double);
+    expect(result.columnTypes[2]).toBe(ColumnTypeEnum.Double);
+  });
+
+  test("executeScript: throws on invalid SQL", async () => {
+    try {
+      await adapter.executeScript("INVALID SQL STATEMENT");
+      expect(true).toBe(false);
+    } catch (e: unknown) {
+      expect((e as Error).name).toBe("DriverAdapterError");
+    }
+  });
+
+  test("startTransaction: concurrent transactions", async () => {
+    const tx1 = await adapter.startTransaction();
+    const tx2 = await adapter.startTransaction();
+
+    await tx1.executeRaw({
+      args: ["ConcUser1", 60],
+      argTypes: [
+        { arity: "scalar", scalarType: "string" },
+        { arity: "scalar", scalarType: "int" },
+      ],
+      sql: "INSERT INTO _adapter_test (name, age) VALUES ($1, $2)",
+    });
+
+    await tx2.executeRaw({
+      args: ["ConcUser2", 70],
+      argTypes: [
+        { arity: "scalar", scalarType: "string" },
+        { arity: "scalar", scalarType: "int" },
+      ],
+      sql: "INSERT INTO _adapter_test (name, age) VALUES ($1, $2)",
+    });
+
+    // Commit tx1, rollback tx2
+    await tx1.executeRaw({ args: [], argTypes: [], sql: "COMMIT" });
+    await tx1.commit();
+    await tx2.executeRaw({ args: [], argTypes: [], sql: "ROLLBACK" });
+    await tx2.rollback();
+
+    const result1 = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT name FROM _adapter_test WHERE name = 'ConcUser1'",
+    });
+    expect(result1.rows.length).toBe(1);
+
+    const result2 = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT name FROM _adapter_test WHERE name = 'ConcUser2'",
+    });
+    expect(result2.rows.length).toBe(0);
+  });
+
+  test("queryRaw: JSONB with primitive values (full pipeline)", async () => {
+    // This tests the full adapter pipeline: Bun.sql auto-parses JSONB →
+    // normalizeJson must stringify ALL types → WASM engine reads via __wbindgen_string_get
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _jsonb_prim_test;
+      CREATE TABLE _jsonb_prim_test (id SERIAL PRIMARY KEY, data JSONB);
+      INSERT INTO _jsonb_prim_test (data) VALUES
+        ('42'), ('true'), ('"hello"'), ('null'), ('[1,2,3]'), ('{"a":1}');
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT data FROM _jsonb_prim_test ORDER BY id",
+    });
+
+    expect(result.rows.length).toBe(6);
+
+    // All values must be strings (JSON-stringified) for Prisma WASM compatibility
+    for (const row of result.rows) {
+      const val = row[0];
+      // null values from JSON null are allowed to be null
+      if (val !== null) {
+        expect(typeof val).toBe("string");
+      }
+    }
+
+    // Verify specific values parse correctly
+    expect(JSON.parse(result.rows[0]![0] as string)).toBe(42);
+    expect(JSON.parse(result.rows[1]![0] as string)).toBe(true);
+    expect(JSON.parse(result.rows[2]![0] as string)).toBe("hello");
+    // JSON null: Bun.sql may return JS null (indistinguishable from SQL NULL)
+    // or the string "null" — either is acceptable
+    const nullVal = result.rows[3]![0];
+    expect(nullVal === null || nullVal === "null").toBe(true);
+    expect(JSON.parse(result.rows[4]![0] as string)).toEqual([1, 2, 3]);
+    expect(JSON.parse(result.rows[5]![0] as string)).toEqual({ a: 1 });
+
+    await client.unsafe("DROP TABLE _jsonb_prim_test").simple();
+  });
+
+  test("UPDATE RETURNING with JSONB + BIGINT columns in transaction", async () => {
+    // Reproduces the smoke-tester scenario: $transaction with updateMany
+    // (no RETURNING) → update with RETURNING on table with jsonb + bigint columns.
+    // Catches normalizeJson/normalizeInt8 issues in the full pipeline.
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _tx_json_bigint_test;
+      CREATE TABLE _tx_json_bigint_test (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}',
+        counter BIGINT DEFAULT 0
+      );
+      INSERT INTO _tx_json_bigint_test (name, metadata, counter) VALUES
+        ('target', '{"role":"admin"}', 0),
+        ('other1', '{"role":"user"}', 100),
+        ('other2', '{"role":"user"}', 200);
+    `)
+      .simple();
+
+    const tx = await adapter.startTransaction();
+
+    try {
+      // Step 1: updateMany on other rows (DML, no RETURNING)
+      const updateCount = await tx.executeRaw({
+        args: ['{"role":"guest"}'],
+        argTypes: [{ arity: "scalar", scalarType: "json" }],
+        sql: "UPDATE _tx_json_bigint_test SET metadata = $1 WHERE name != 'target'",
+      });
+      expect(updateCount).toBe(2);
+
+      // Step 2: update target row with RETURNING (SELECT-like result with jsonb + bigint)
+      const result = await tx.queryRaw({
+        args: ["[]", BigInt(42)],
+        argTypes: [
+          { arity: "scalar", scalarType: "json" },
+          { arity: "scalar", scalarType: "bigint" },
+        ],
+        sql: "UPDATE _tx_json_bigint_test SET metadata = $1, counter = $2 WHERE name = 'target' RETURNING id, name, metadata, counter",
+      });
+
+      expect(result.rows.length).toBe(1);
+      const row = result.rows[0]!;
+
+      // id: integer
+      expect(typeof row[0]).toBe("number");
+      // name: text
+      expect(row[1]).toBe("target");
+      // metadata: must be a JSON string (not raw JS array) for WASM compatibility
+      expect(typeof row[2]).toBe("string");
+      expect(JSON.parse(row[2] as string)).toEqual([]);
+      // counter: must be accessible as a number
+      expect(Number(row[3])).toBe(42);
+
+      await tx.executeRaw({ args: [], argTypes: [], sql: "COMMIT" });
+      await tx.commit();
+    } catch (e) {
+      await tx.executeRaw({ args: [], argTypes: [], sql: "ROLLBACK" });
+      await tx.rollback();
+      throw e;
+    }
+
+    // Verify committed state
+    const verify = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT metadata, counter FROM _tx_json_bigint_test WHERE name = 'target'",
+    });
+    expect(verify.rows.length).toBe(1);
+    expect(JSON.parse(verify.rows[0]![0] as string)).toEqual([]);
+    expect(Number(verify.rows[0]![1])).toBe(42);
+
+    await client.unsafe("DROP TABLE _tx_json_bigint_test").simple();
+  });
 });

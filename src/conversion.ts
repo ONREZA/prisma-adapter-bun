@@ -4,6 +4,7 @@ import { type ArgType, type ColumnType, ColumnTypeEnum } from "@prisma/driver-ad
 const RE_TIMESTAMPTZ_OFFSET = /([+-]\d{2})(:\d{2})?$/;
 const RE_TIMETZ_STRIP = /[+-]\d{2}(:\d{2})?$/;
 const RE_MONEY_SYMBOL = /\$/g;
+const RE_MONEY_COMMA = /,/g;
 const RE_PG_ESCAPE_BACKSLASH = /\\/g;
 const RE_PG_ESCAPE_QUOTE = /"/g;
 const RE_INT8_STRING = /^-?\d+$/;
@@ -205,9 +206,13 @@ function normalizeTimestamptz(value: unknown): unknown {
     return `${formatDateTime(value)}+00:00`;
   }
   if (typeof value === "string") {
-    // Normalize various timezone formats to +00:00
-    // Only add :00 if not already present (e.g., "+03" → "+03:00", but "+03:00" stays as is)
-    return value.replace(" ", "T").replace(RE_TIMESTAMPTZ_OFFSET, "$1$2");
+    const s = value.replace(" ", "T");
+    // Handle "Z" suffix (UTC shorthand) → convert to "+00:00"
+    if (s.endsWith("Z")) {
+      return `${s.slice(0, -1)}+00:00`;
+    }
+    // Normalize timezone offset to full format: "+03" → "+03:00", "+03:00" stays as is
+    return s.replace(RE_TIMESTAMPTZ_OFFSET, (_, hours, minutes) => `${hours}${minutes || ":00"}`);
   }
   return value;
 }
@@ -244,16 +249,17 @@ function normalizeNumeric(value: unknown): unknown {
 
 function normalizeMoney(value: unknown): unknown {
   const s = String(value);
-  // Remove $ symbol, preserving minus sign if present
-  // Handles: "$100.50" -> "100.50", "-$100.50" -> "-100.50"
-  return s.replace(RE_MONEY_SYMBOL, "");
+  // Remove $ symbol and thousand-separator commas, preserving minus sign if present
+  // Handles: "$1,000.50" -> "1000.50", "-$100.50" -> "-100.50"
+  return s.replace(RE_MONEY_SYMBOL, "").replace(RE_MONEY_COMMA, "");
 }
 
 function normalizeJson(value: unknown): unknown {
-  if (typeof value === "object" && value !== null) {
-    return JSON.stringify(value);
-  }
-  return value;
+  // WASM engine reads Json values via __wbindgen_string_get which requires a string.
+  // Bun.sql auto-parses JSONB into JS objects/arrays/primitives.
+  // We must ALWAYS return a JSON string, regardless of the JS type.
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
 }
 
 function normalizeBytes(value: unknown): unknown {
@@ -273,11 +279,15 @@ function normalizeArray(value: unknown, elementNormalizer: (v: unknown) => unkno
 type Normalizer = (value: unknown) => unknown;
 
 /**
- * Normalize INT8 string to BigInt.
+ * Normalize INT8 to BigInt.
  * Bun.sql returns BIGINT as string, but Prisma expects BigInt for Int64 columns.
+ * Also handles number inputs (for when Bun.sql returns small BIGINT as numbers).
  */
 function normalizeInt8(value: unknown): unknown {
   if (typeof value === "string") {
+    return BigInt(value);
+  }
+  if (typeof value === "number") {
     return BigInt(value);
   }
   return value;

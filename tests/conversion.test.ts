@@ -156,6 +156,11 @@ describe("mapArg", () => {
     expect(mapArg("null", { arity: "scalar", scalarType: "json" })).toBeNull();
   });
 
+  test("passes through invalid JSON string for json scalarType", () => {
+    expect(mapArg("not valid json", { arity: "scalar", scalarType: "json" })).toBe("not valid json");
+    expect(mapArg("", { arity: "scalar", scalarType: "json" })).toBe("");
+  });
+
   test("maps list arguments to PG array literal", () => {
     const result = mapArg([1, 2, 3], { arity: "list", scalarType: "int" });
     expect(result).toBe("{1,2,3}");
@@ -181,14 +186,18 @@ describe("mapArg", () => {
 });
 
 describe("resultNormalizers", () => {
-  test("normalizes INT8 string to BigInt", () => {
+  test("normalizes INT8 to BigInt", () => {
     const normalizer = resultNormalizers[PgOid.INT8]!;
     // Bun.sql returns BIGINT as string
     expect(normalizer("3000000000")).toBe(BigInt(3000000000));
     expect(normalizer("9999999999999")).toBe(BigInt(9999999999999));
     expect(normalizer("-2147483649")).toBe(BigInt(-2147483649));
-    // Small values
+    // Small values as string
     expect(normalizer("42")).toBe(BigInt(42));
+    // Number input (for when Bun.sql returns small BIGINT as numbers)
+    expect(normalizer(42)).toBe(BigInt(42));
+    expect(normalizer(0)).toBe(BigInt(0));
+    expect(normalizer(-100)).toBe(BigInt(-100));
     // Already BigInt: passthrough
     expect(normalizer(BigInt(42))).toBe(BigInt(42));
     // Null: passthrough
@@ -223,19 +232,40 @@ describe("resultNormalizers", () => {
     expect(normalizer([{ a: 1 }, { b: 2 }])).toBe('[{"a":1},{"b":2}]');
   });
 
+  test("normalizes JSON/JSONB primitives to strings", () => {
+    const jsonNormalizer = resultNormalizers[PgOid.JSON]!;
+    const jsonbNormalizer = resultNormalizers[PgOid.JSONB]!;
+    for (const normalizer of [jsonNormalizer, jsonbNormalizer]) {
+      // Number primitives
+      expect(normalizer(42)).toBe("42");
+      expect(normalizer(0)).toBe("0");
+      expect(normalizer(3.14)).toBe("3.14");
+      // Boolean primitives
+      expect(normalizer(true)).toBe("true");
+      expect(normalizer(false)).toBe("false");
+      // String passthrough (already a string — could be pre-stringified JSON)
+      expect(normalizer('{"key":"value"}')).toBe('{"key":"value"}');
+      expect(normalizer("plain text")).toBe("plain text");
+    }
+  });
+
   test("normalizes NUMERIC to string", () => {
     const normalizer = resultNormalizers[PgOid.NUMERIC]!;
     expect(normalizer(123.456)).toBe("123.456");
     expect(normalizer("99.99")).toBe("99.99");
   });
 
-  test("normalizes MONEY by stripping $", () => {
+  test("normalizes MONEY by stripping $ and commas", () => {
     const normalizer = resultNormalizers[PgOid.MONEY]!;
     expect(normalizer("$100.50")).toBe("100.50");
     expect(normalizer("50.00")).toBe("50.00");
     // Negative values
     expect(normalizer("-$100.50")).toBe("-100.50");
     expect(normalizer("-50.00")).toBe("-50.00");
+    // Values with thousand separators
+    expect(normalizer("$1,000.50")).toBe("1000.50");
+    expect(normalizer("$1,000,000.00")).toBe("1000000.00");
+    expect(normalizer("-$1,000.50")).toBe("-1000.50");
   });
 
   test("normalizes TIMESTAMP Date to ISO", () => {
@@ -245,6 +275,12 @@ describe("resultNormalizers", () => {
     expect(result).toContain("2024-06-15");
     expect(result).toContain("12:30:45.123");
     expect(result).toContain("+00:00");
+  });
+
+  test("normalizes TIMESTAMP string with microsecond precision", () => {
+    const normalizer = resultNormalizers[PgOid.TIMESTAMP]!;
+    expect(normalizer("2024-06-15 12:30:45.123456")).toBe("2024-06-15T12:30:45.123456+00:00");
+    expect(normalizer("2024-06-15 12:30:45")).toBe("2024-06-15T12:30:45+00:00");
   });
 
   test("normalizes TIMESTAMPTZ Date to ISO", () => {
@@ -257,11 +293,16 @@ describe("resultNormalizers", () => {
 
   test("normalizes TIMESTAMPTZ string with various timezone formats", () => {
     const normalizer = resultNormalizers[PgOid.TIMESTAMPTZ]!;
-    // Short format should be preserved
-    expect(normalizer("2024-06-15 12:30:00+03")).toBe("2024-06-15T12:30:00+03");
-    // Full format should be preserved (not double-appended)
+    // Short format normalized to full format
+    expect(normalizer("2024-06-15 12:30:00+03")).toBe("2024-06-15T12:30:00+03:00");
+    // Full format preserved
     expect(normalizer("2024-06-15 12:30:00+05:30")).toBe("2024-06-15T12:30:00+05:30");
     expect(normalizer("2024-06-15 12:30:00-03:00")).toBe("2024-06-15T12:30:00-03:00");
+    // Z suffix converted to +00:00
+    expect(normalizer("2024-06-15T12:30:00Z")).toBe("2024-06-15T12:30:00+00:00");
+    expect(normalizer("2024-06-15T12:30:00.123Z")).toBe("2024-06-15T12:30:00.123+00:00");
+    // With fractional seconds and short offset
+    expect(normalizer("2024-06-15 12:30:00.123456+03")).toBe("2024-06-15T12:30:00.123456+03:00");
   });
 
   test("normalizes DATE to string", () => {
@@ -299,6 +340,12 @@ describe("resultNormalizers", () => {
     const normalizer = resultNormalizers[PgOid.NUMERIC_ARRAY]!;
     const result = normalizer([1.5, 2.5, 3.5]);
     expect(result).toEqual(["1.5", "2.5", "3.5"]);
+  });
+
+  test("normalizes MONEY arrays with commas", () => {
+    const normalizer = resultNormalizers[PgOid.MONEY_ARRAY]!;
+    const result = normalizer(["$1,000.50", "$2,000.00", null]);
+    expect(result).toEqual(["1000.50", "2000.00", null]);
   });
 
   test("normalizes BIT strings", () => {
@@ -366,6 +413,12 @@ describe("inferOidFromValue", () => {
   test("float -> FLOAT8", () => {
     expect(inferOidFromValue(3.14)).toBe(PgOid.FLOAT8);
     expect(inferOidFromValue(-0.5)).toBe(PgOid.FLOAT8);
+  });
+
+  test("float special values -> FLOAT8", () => {
+    expect(inferOidFromValue(Number.POSITIVE_INFINITY)).toBe(PgOid.FLOAT8);
+    expect(inferOidFromValue(Number.NEGATIVE_INFINITY)).toBe(PgOid.FLOAT8);
+    expect(inferOidFromValue(Number.NaN)).toBe(PgOid.FLOAT8);
   });
 
   test("bigint -> INT8", () => {
