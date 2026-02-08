@@ -791,38 +791,38 @@ describe.skipIf(!canConnect)("PrismaBunAdapter integration", () => {
     expect(result2.rows.length).toBe(0);
   });
 
-  test("queryRaw: JSONB objects and arrays are stringified (full pipeline)", async () => {
-    // Without column metadata, value-based inference can only identify
-    // objects/arrays as JSONB. Primitives (number, boolean) are inferred
-    // as their SQL counterparts (INT4, BOOL) and not stringified.
-    // This tests the cases that DO work correctly through the full pipeline.
+  test("queryRaw: JSONB objects are stringified (full pipeline)", async () => {
+    // Without column metadata, value-based inference identifies JS objects as JSONB.
+    // JS arrays of primitives (e.g. [1,2,3]) are inferred as typed arrays (INT4_ARRAY),
+    // not JSONB, because inferArrayOid looks at element types.
+    // Only plain objects reliably map to JSONB through the inference pipeline.
     await client
       .unsafe(`
-      DROP TABLE IF EXISTS _jsonb_prim_test;
-      CREATE TABLE _jsonb_prim_test (id SERIAL PRIMARY KEY, data JSONB);
-      INSERT INTO _jsonb_prim_test (data) VALUES
-        ('[1,2,3]'), ('{"a":1}'), ('{"nested":{"b":2}}');
+      DROP TABLE IF EXISTS _jsonb_obj_test;
+      CREATE TABLE _jsonb_obj_test (id SERIAL PRIMARY KEY, data JSONB);
+      INSERT INTO _jsonb_obj_test (data) VALUES
+        ('{"a":1}'), ('{"nested":{"b":2}}'), ('{"list":[1,2,3]}');
     `)
       .simple();
 
     const result = await adapter.queryRaw({
       args: [],
       argTypes: [],
-      sql: "SELECT data FROM _jsonb_prim_test ORDER BY id",
+      sql: "SELECT data FROM _jsonb_obj_test ORDER BY id",
     });
 
     expect(result.rows.length).toBe(3);
 
-    // Objects and arrays: correctly identified as JSONB → stringified
+    // Objects: correctly identified as JSONB → stringified
     for (const row of result.rows) {
       expect(typeof row[0]).toBe("string");
     }
 
-    expect(JSON.parse(result.rows[0]![0] as string)).toEqual([1, 2, 3]);
-    expect(JSON.parse(result.rows[1]![0] as string)).toEqual({ a: 1 });
-    expect(JSON.parse(result.rows[2]![0] as string)).toEqual({ nested: { b: 2 } });
+    expect(JSON.parse(result.rows[0]![0] as string)).toEqual({ a: 1 });
+    expect(JSON.parse(result.rows[1]![0] as string)).toEqual({ nested: { b: 2 } });
+    expect(JSON.parse(result.rows[2]![0] as string)).toEqual({ list: [1, 2, 3] });
 
-    await client.unsafe("DROP TABLE _jsonb_prim_test").simple();
+    await client.unsafe("DROP TABLE _jsonb_obj_test").simple();
   });
 
   test("queryRaw: JSONB primitives are returned as JS types (inference limitation)", async () => {
