@@ -100,6 +100,26 @@ const client = new SQL("postgres://user:pass@localhost:5432/mydb");
 const adapter = new PrismaBun(client);
 ```
 
+### Custom Bun.sql Options
+
+Use `validateConnectionUrl` to pass custom Bun-specific options while preserving the `schema` option:
+
+```ts
+import { SQL } from "bun";
+import { PrismaBun, validateConnectionUrl } from "@onreza/prisma-adapter-bun";
+
+const { url, schema } = validateConnectionUrl(process.env.DATABASE_URL!);
+
+const client = new SQL({
+  url,
+  idleTimeout: 30,
+  maxLifetime: 3600,
+  connectionTimeout: 10,
+});
+
+const adapter = new PrismaBun(client, { schema });
+```
+
 ### Schema Option
 
 ```ts
