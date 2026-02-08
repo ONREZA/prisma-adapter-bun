@@ -929,4 +929,48 @@ describe.skipIf(!canConnect)("PrismaBunAdapter integration", () => {
 
     await client.unsafe("DROP TABLE _tx_json_bigint_test").simple();
   });
+
+  test("queryRaw: JSONB mixed values — objects and strings in same column", async () => {
+    // Reproduces production bug: JSONB column with mixed value types.
+    // findFirstNonNullInColumn picks first non-null (an object) → OID = JSONB.
+    // All values in the column get ColumnType.Json → normalizeJson applied.
+    // Without the fix, string values passed through as-is and WASM did
+    // JSON.parse("hello") → "JSON Parse error: Unexpected EOF".
+    // With the fix, normalizeJson always re-stringifies: "hello" → '"hello"'.
+    await client
+      .unsafe(`
+      DROP TABLE IF EXISTS _jsonb_mixed_test;
+      CREATE TABLE _jsonb_mixed_test (id SERIAL PRIMARY KEY, data JSONB);
+      INSERT INTO _jsonb_mixed_test (data) VALUES
+        ('{"key":"value"}'), ('"hello"'), ('""'), ('null');
+    `)
+      .simple();
+
+    const result = await adapter.queryRaw({
+      args: [],
+      argTypes: [],
+      sql: "SELECT data FROM _jsonb_mixed_test ORDER BY id",
+    });
+
+    expect(result.rows.length).toBe(4);
+
+    // First row is object → inferOidFromValue → JSONB → entire column typed as Json
+    expect(typeof result.rows[0]![0]).toBe("string");
+    expect(JSON.parse(result.rows[0]![0] as string)).toEqual({ key: "value" });
+
+    // JSONB string "hello" → JS "hello" → normalizeJson → '"hello"'
+    // WASM can then JSON.parse('"hello"') → "hello" ✓
+    expect(result.rows[1]![0]).toBe('"hello"');
+    expect(JSON.parse(result.rows[1]![0] as string)).toBe("hello");
+
+    // JSONB string "" → JS "" → normalizeJson → '""'
+    // Previously caused: JSON Parse error: Unexpected EOF
+    expect(result.rows[2]![0]).toBe('""');
+    expect(JSON.parse(result.rows[2]![0] as string)).toBe("");
+
+    // JSONB null → JS null → not processed (null values skip normalizer)
+    expect(result.rows[3]![0]).toBeNull();
+
+    await client.unsafe("DROP TABLE _jsonb_mixed_test").simple();
+  });
 });

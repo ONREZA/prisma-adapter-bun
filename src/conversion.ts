@@ -256,9 +256,11 @@ function normalizeMoney(value: unknown): unknown {
 
 function normalizeJson(value: unknown): unknown {
   // WASM engine reads Json values via __wbindgen_string_get which requires a string.
-  // Bun.sql auto-parses JSONB into JS objects/arrays/primitives.
-  // We must ALWAYS return a JSON string, regardless of the JS type.
-  if (typeof value === "string") return value;
+  // Bun.sql auto-parses ALL JSONB values, including JSON strings:
+  //   JSONB "hello" → JS "hello", JSONB "" → JS ""
+  // We must always return a valid JSON string, so strings must be re-quoted:
+  //   "hello" → "\"hello\"", "" → "\"\""
+  // Without this, WASM does JSON.parse("hello") → SyntaxError: Unexpected EOF
   return JSON.stringify(value);
 }
 

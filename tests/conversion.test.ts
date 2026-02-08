@@ -214,8 +214,10 @@ describe("resultNormalizers", () => {
     const normalizer = resultNormalizers[PgOid.JSON]!;
     expect(normalizer({ key: "value" })).toBe('{"key":"value"}');
     expect(normalizer([1, 2, 3])).toBe("[1,2,3]");
-    // Already a string: passthrough
-    expect(normalizer('{"key":"value"}')).toBe('{"key":"value"}');
+    // Bun.sql parses JSONB strings: JSONB "hello" → JS "hello"
+    // normalizeJson must re-stringify all values, including strings
+    expect(normalizer("hello")).toBe('"hello"');
+    expect(normalizer("")).toBe('""');
   });
 
   test("normalizes JSONB objects to strings", () => {
@@ -243,9 +245,11 @@ describe("resultNormalizers", () => {
       // Boolean primitives
       expect(normalizer(true)).toBe("true");
       expect(normalizer(false)).toBe("false");
-      // String passthrough (already a string — could be pre-stringified JSON)
-      expect(normalizer('{"key":"value"}')).toBe('{"key":"value"}');
-      expect(normalizer("plain text")).toBe("plain text");
+      // Bun.sql auto-parses JSONB strings: JSONB "hello" → JS "hello"
+      // Must re-quote for WASM: "hello" → '"hello"'
+      expect(normalizer("hello")).toBe('"hello"');
+      expect(normalizer("")).toBe('""');
+      expect(normalizer("plain text")).toBe('"plain text"');
     }
   });
 
