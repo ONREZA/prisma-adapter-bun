@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3] - 2026-02-08
+
+### 🐛 Bug Fixes
+
+- always re-stringify JSONB values including strings ([0730ad3](https://github.com/ONREZA/prisma-adapter-bun/commit/0730ad399930f7e11f6904e731567656c40bb6f1)) by Ivan Bobchenkov
+
 ## [0.5.2] - 2026-02-08
 
 ### 🐛 Bug Fixes
