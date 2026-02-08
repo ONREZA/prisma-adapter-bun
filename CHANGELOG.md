@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-02-08
+
+### 🐛 Bug Fixes
+
+- use plain objects in JSONB stringification test ([1b7a472](https://github.com/ONREZA/prisma-adapter-bun/commit/1b7a4720290b4f876303123923f1cb9783d44d3d)) by Ivan Bobchenkov
+- correct integration tests to match Bun.sql actual behavior ([3b48223](https://github.com/ONREZA/prisma-adapter-bun/commit/3b48223d1d7c853aa1e2b630336eeeadc8c69c74)) by Ivan Bobchenkov
+- normalize money commas, timestamptz short offsets, and INT8 number inputs ([39c3fcf](https://github.com/ONREZA/prisma-adapter-bun/commit/39c3fcf3ca7616d0a536d123faf046164825eecf)) by Ivan Bobchenkov
+
 ## [0.5.1] - 2026-02-08
 
 ### 🐛 Bug Fixes
