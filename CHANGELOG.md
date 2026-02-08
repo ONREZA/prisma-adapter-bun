@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-02-08
+
+### ✨ Features
+
+- export validateConnectionUrl for manual SQL client creation ([f9baa57](https://github.com/ONREZA/prisma-adapter-bun/commit/f9baa57826f69c7d32c96a0496fb25da7b35e733)) by Ivan Bobchenkov
+
 ## [0.4.3] - 2026-02-05
 
 ### 🐛 Bug Fixes
